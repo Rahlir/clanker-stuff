@@ -1,7 +1,7 @@
 # clunker-stuff
 
 My personal collection of AI-agent workflow assets: prompts, skills, and a pi
-extension that I use for day-to-day coding work.
+extensions that I use for day-to-day coding work.
 
 This repository is not a packaged product or framework. It is meant to be
 useful in two ways:
@@ -29,7 +29,8 @@ modifications. Hence, I don't include them here.
 ├── prompts/                      # reusable prompt templates
 └── skills/                       # agent workflow instructions and references
     ├── big-feature-workflow/
-    └── jira/
+    ├── jira/
+    └── loki/
 ```
 
 ## How to use this repository
@@ -47,6 +48,7 @@ ln -sfn "$PWD/extensions/code-review" ~/.pi/agent/extensions/code-review
 ln -sfn "$PWD/prompts" ~/.pi/agent/prompts
 ln -sfn "$PWD/skills/big-feature-workflow" ~/.pi/agent/skills/big-feature-workflow
 ln -sfn "$PWD/skills/jira" ~/.pi/agent/skills/jira
+ln -sfn "$PWD/skills/loki" ~/.pi/agent/skills/loki
 ```
 
 Copy installation:
@@ -58,7 +60,13 @@ cp -R extensions/code-review ~/.pi/agent/extensions/code-review
 cp -R prompts/* ~/.pi/agent/prompts/
 cp -R skills/big-feature-workflow ~/.pi/agent/skills/big-feature-workflow
 cp -R skills/jira ~/.pi/agent/skills/jira
+cp -R skills/loki ~/.pi/agent/skills/loki
 ```
+
+The `loki` skill needs a small extra step: copy `skills/loki/loki.local.example.md`
+to `skills/loki/loki.local.md` (or to the same path under your installed copy)
+and fill in your Loki addresses, tenant id, and service names. See the [loki
+skill README](skills/loki/README.md) for details.
 
 Restart pi after installing, or run `/reload` in an existing pi session.
 
@@ -111,6 +119,15 @@ workflow README](skills/big-feature-workflow/README.md) for details.
 
 A Jira workflow skill built around the local `jira` CLI. See the [Jira skill
 README](skills/jira/README.md) for requirements, examples, and safety rules.
+
+### [`skills/loki/`](skills/loki/)
+
+A Loki log exploration skill built around the `logcli` CLI. Translates plain
+language requests into LogQL queries for searching, error hunting, request
+tracing, live tailing, and exporting logs. Deployment specific values (Loki
+addresses, tenant id, service names, label conventions) live in a gitignored
+`loki.local.md` next to the skill, so the published skill stays generic. See
+the [loki skill README](skills/loki/README.md) for setup.
 
 ## Updating
 
