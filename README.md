@@ -1,6 +1,6 @@
 # clunker-stuff
 
-My personal collection of AI-agent workflow assets: prompts, skills, and a pi
+My personal collection of AI-agent workflow assets: prompts, skills, and pi
 extensions that I use for day-to-day coding work.
 
 This repository is not a packaged product or framework. It is meant to be
@@ -25,7 +25,8 @@ modifications. Hence, I don't include them here.
 ```text
 .
 ├── extensions/
-│   └── code-review/              # pi extension that adds a code_review tool
+│   ├── code-review/              # pi extension that adds a code_review tool
+│   └── model-markers/            # pi extension that persists model/thinking changes inline
 ├── prompts/                      # reusable prompt templates
 └── skills/                       # agent workflow instructions and references
     ├── big-feature-workflow/
@@ -45,6 +46,7 @@ Symlink installation, useful if you want to pull updates later:
 mkdir -p ~/.pi/agent/extensions ~/.pi/agent/prompts ~/.pi/agent/skills
 
 ln -sfn "$PWD/extensions/code-review" ~/.pi/agent/extensions/code-review
+ln -sfn "$PWD/extensions/model-markers" ~/.pi/agent/extensions/model-markers
 ln -sfn "$PWD/prompts" ~/.pi/agent/prompts
 ln -sfn "$PWD/skills/big-feature-workflow" ~/.pi/agent/skills/big-feature-workflow
 ln -sfn "$PWD/skills/jira" ~/.pi/agent/skills/jira
@@ -57,6 +59,7 @@ Copy installation:
 mkdir -p ~/.pi/agent/extensions ~/.pi/agent/prompts ~/.pi/agent/skills
 
 cp -R extensions/code-review ~/.pi/agent/extensions/code-review
+cp -R extensions/model-markers ~/.pi/agent/extensions/model-markers
 cp -R prompts/* ~/.pi/agent/prompts/
 cp -R skills/big-feature-workflow ~/.pi/agent/skills/big-feature-workflow
 cp -R skills/jira ~/.pi/agent/skills/jira
@@ -101,6 +104,16 @@ A pi-specific extension that adds a `code_review` tool. It runs a separate
 reviewer subagent and reports findings by severity. See the [extension
 README](extensions/code-review/README.md) for installation, configuration,
 usage, and troubleshooting.
+
+### [`extensions/model-markers/`](extensions/model-markers/)
+
+A pi-specific extension that persists model and thinking-level changes as
+inline custom messages in the session, so they remain visible after session
+reload, `/resume`, `/tree` branch navigation, and `/fork`. By default pi only
+shows a transient "Switched to ..." notification at the moment of the change;
+this extension makes the change durable, branch-scoped, and visible in chat
+history. See the [extension README](extensions/model-markers/README.md) for
+details.
 
 ### [`prompts/`](prompts/)
 
