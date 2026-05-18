@@ -1,4 +1,4 @@
 {
-  "model": "anthropic-vertex/claude-sonnet-4-6",
+  "model": "openai-codex/gpt-5.3-codex",
   "thinking": "medium"
 }

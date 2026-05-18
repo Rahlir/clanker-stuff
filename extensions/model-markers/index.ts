@@ -23,8 +23,8 @@
  *   for /tree, so the flag path is defensive, not load-bearing.
  */
 
-import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
-import { Box, Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { Box, Text } from "@earendil-works/pi-tui";
 
 const SETTINGS_MARKER = "settings-marker";
 
