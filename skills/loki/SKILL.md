@@ -49,7 +49,7 @@ If that file does not exist:
    template there:
    ```bash
    mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker"
-   cp <skill-dir>/loki.local.example.md "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/loki.local.md"
+   cp loki.local.example.md "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/loki.local.md"
    ```
    Then help them fill in their actual values (addresses, tenant id, service
    shortcuts, label conventions).

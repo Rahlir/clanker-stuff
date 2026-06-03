@@ -5,14 +5,14 @@ description: Query Figma files via REST API. Use when the user pastes a figma.co
 
 # Figma
 
-Use this skill to pull design context from Figma into implementation work. The common case is grounding code in the design — comparing implementation against a wireframe, applying the correct brand colors and spacing, or checking how a component should look. Less commonly, the user asks for a specific data lookup like "what value is the variable X". Either way, the user supplies a figma.com URL; fetch what's needed via `{baseDir}/figma.mjs` and apply it. All operations are read-only.
+Use this skill to pull design context from Figma into implementation work. The common case is grounding code in the design — comparing implementation against a wireframe, applying the correct brand colors and spacing, or checking how a component should look. Less commonly, the user asks for a specific data lookup like "what value is the variable X". Either way, the user supplies a figma.com URL; fetch what's needed via `./figma.mjs` and apply it. All operations are read-only.
 
 ## Required setup
 
 **Run this check first:**
 
 ```bash
-test -n "$FIGMA_TOKEN" && {baseDir}/figma.mjs me
+test -n "$FIGMA_TOKEN" && ./figma.mjs me
 ```
 
 - If both succeed, the token is valid and the helper works.
@@ -35,7 +35,7 @@ test -n "$FIGMA_TOKEN" && {baseDir}/figma.mjs me
 
 **Command:**
 ```bash
-{baseDir}/figma.mjs info <url|key>
+./figma.mjs info <url|key>
 ```
 
 Returns file metadata and the page list with child counts. Use as the entry point when you have the file key but do not yet know which page or frame to drill into.
@@ -46,8 +46,8 @@ Returns file metadata and the page list with child counts. Use as the entry poin
 
 **Commands:**
 ```bash
-{baseDir}/figma.mjs node <url> [--depth N]
-{baseDir}/figma.mjs node <key> <id[,id,...]> [--depth N]
+./figma.mjs node <url> [--depth N]
+./figma.mjs node <key> <id[,id,...]> [--depth N]
 ```
 
 Default depth is 2 (node + children + grandchildren). Raise `--depth` rather than chaining calls when going deeper.
@@ -58,7 +58,7 @@ Default depth is 2 (node + children + grandchildren). Raise `--depth` rather tha
 
 **Command:**
 ```bash
-{baseDir}/figma.mjs vars <url|key> [--collection NAME]
+./figma.mjs vars <url|key> [--collection NAME]
 ```
 
 Returns variables grouped by collection and mode. If the response is empty (the file has no variables defined), fall back to `styles` (see task 4) for the legacy pre-variables system. A `403` is a different case: token or plan is missing `file_variables:read`; see Errors below.
@@ -69,8 +69,8 @@ Returns variables grouped by collection and mode. If the response is empty (the 
 
 **Commands:**
 ```bash
-{baseDir}/figma.mjs components <url|key>   # named components + component sets
-{baseDir}/figma.mjs styles     <url|key>   # color, text, effect, grid styles
+./figma.mjs components <url|key>   # named components + component sets
+./figma.mjs styles     <url|key>   # color, text, effect, grid styles
 ```
 
 For internals of a specific component, follow up with `node <key> <component-node-id>`.
@@ -82,7 +82,7 @@ For internals of a specific component, follow up with `node <key> <component-nod
 **Steps:**
 1. Render and download:
    ```bash
-   {baseDir}/figma.mjs image <url> [--format png|svg|pdf] [--scale 1|2|3]
+   ./figma.mjs image <url> [--format png|svg|pdf] [--scale 1|2|3]
    ```
 2. The script prints the saved path under `/tmp/pi-figma-skill/`.
 3. Use the `read` tool on that path to view the image.

@@ -163,7 +163,7 @@ To produce a high-quality plan:
 
 ### What the plan should contain
 
-Read `{baseDir}/templates/plan-template.md` and use it as the structural
+Read `templates/plan-template.md` and use it as the structural
 reference for `docs/ai/<feature_name>_plan.md`. Sections marked optional in the template may
 be omitted when empty.
 
@@ -173,7 +173,7 @@ pre-write the entire change line by line.
 
 ### What the tasks file should contain
 
-Read `{baseDir}/templates/tasks-template.md` and use it as the structural
+Read `templates/tasks-template.md` and use it as the structural
 reference for `docs/ai/<feature_name>_tasks.md`. The status legend and dependency
 conventions defined in that template are normative and must be followed so
 that later modes can reliably parse task state.
@@ -256,7 +256,7 @@ Complete one small, reviewable implementation increment from the plan.
    - if ambiguous: stop and ask
 3. Choose session scope:
    - `task-driven`: read tasks file, find unblocked `[ ]` tasks (dependency
-     rules from `{baseDir}/templates/tasks-template.md`), and either use
+     rules from `templates/tasks-template.md`), and either use
      user-requested unblocked tasks or pick the next unblocked logical group;
      prefer 1-4 tightly related tasks per session, erring toward fewer when
      they involve complex logic or cross-component changes;
@@ -271,7 +271,7 @@ Complete one small, reviewable implementation increment from the plan.
      as appropriate; `[!]` is for external blockers only; if a task remains
      `[~]`, devlog must include done, remaining, and why
    - ensure `docs/ai/<feature_name>_devlog.md` exists (read
-     `{baseDir}/templates/devlog-template.md` and create from it if missing)
+     `templates/devlog-template.md` and create from it if missing)
    - append a new `## Session Log` entry; for direct execution use
      `Tasks completed: n/a - direct mode`
 
@@ -331,7 +331,7 @@ You must not:
 - rewrite past `## Session Log` entries
 
 If `docs/ai/<feature_name>_devlog.md` does not exist, read
-`{baseDir}/templates/devlog-template.md` and create the devlog from it before
+`templates/devlog-template.md` and create the devlog from it before
 updating `## Summary`.
 
 ### Goal
