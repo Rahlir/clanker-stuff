@@ -1,5 +1,6 @@
 ---
 description: Create conventional commit for a squash commit
+argument-hint: "<changes in the squash commit>"
 ---
 
 Create a git commit message following the Conventional Commits 1.0.0 specification for the following changes: $@
@@ -31,11 +32,18 @@ Examples:
 ```
 feat(auth): add OAuth2 login support
 
+Implements the full OAuth2 workflow for authenticating the user to the
+application.
+
 Changelog: added
 
 ----------------------------------------------
 
 fix: prevent race condition in request handler
+
+The request handler had a race condition when multiple requests were processed
+concurrently. This commit adds lock mechanism with `asyncio.Lock` that prevents
+these race conditions.
 
 Changelog: fixed
 
