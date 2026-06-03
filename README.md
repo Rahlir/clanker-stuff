@@ -56,11 +56,11 @@ install it is pi's package manager. This pulls in all extensions, skills, and
 prompts in one step and gives you a clean update path.
 
 ```bash
-pi install git:github.com/Rahlir/clanker-stuff@v0.1.0    # global (~/.pi/agent)
-pi install -l git:github.com/Rahlir/clanker-stuff@v0.1.0  # project-local (.pi/)
+pi install git:github.com/Rahlir/clanker-stuff@0.1.0    # global (~/.pi/agent)
+pi install -l git:github.com/Rahlir/clanker-stuff@0.1.0  # project-local (.pi/)
 ```
 
-Replace `@v0.1.0` with the tag you want to pin to. Project-local installs are
+Replace `@0.1.0` with the tag you want to pin to. Project-local installs are
 written to `.pi/settings.json`, which you can commit so teammates get the same
 tooling automatically on startup.
 
