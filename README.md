@@ -13,7 +13,8 @@ useful in two ways:
 
 The prompts are plain Markdown and skills follow [agent skills
 spec](https://agentskills.io/specification), so they are not inherently tied to
-`pi`. The only pi-specific components are the extensions in `extensions/`.
+`pi`. The only pi-specific components are the extensions in `extensions/` and
+themes in `themes/`.
 
 ## Related skills and extensions
 
@@ -41,6 +42,7 @@ needed for those, but they will not work in non-pi harnesses.
 ```text
 .
 ├── extensions/                   # pi extensions
+├── themes/                       # pi themes
 ├── prompts/                      # reusable prompt templates (pi specific format)
 └── skills/                       # agent skills (agent skills spec - https://agentskills.io/specification)
 ```
@@ -112,5 +114,3 @@ If you installed with symlinks or copies, pull updates in this repository
 - The Markdown prompts and skills are intended to be edited. Fork them, rename
   them, remove irrelevant constraints, or adjust their metadata for your
   agent's skill/prompt format.
-- The repository does not define a standalone application, package, or test
-  suite.

@@ -1,11 +1,12 @@
 {
   "name": "clanker-stuff",
   "version": "0.1.0",
-  "description": "Personal collection of AI-agent workflow assets: prompts, skills, and pi extensions.",
+  "description": "Rahlir's personal collection of AI-agent workflow assets: prompts, skills, and pi extensions and themes.",
   "keywords": [
     "pi-package",
     "pi-extension",
-    "pi-skill"
+    "pi-skill",
+    "pi-theme"
   ],
   "license": "MIT",
   "repository": {
@@ -17,7 +18,8 @@
   "pi": {
     "extensions": ["./extensions/*/index.ts"],
     "skills": ["./skills"],
-    "prompts": ["./prompts"]
+    "prompts": ["./prompts"],
+    "themes": ["./themes"]
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
