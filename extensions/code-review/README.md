@@ -53,13 +53,27 @@ pi -e ./index.ts
 ```text
 code-review/
 ├── index.ts              # Extension entry point
-├── config.json           # Default reviewer model and thinking level
-└── reviewer-prompt.md    # System prompt used by the reviewer subprocess
+├── config.json           # Bundled default reviewer model and thinking level
+└── reviewer-prompt.md    # Bundled default reviewer system prompt
 ```
 
 ## Configuration
 
-Edit `config.json` to set the default model and thinking level used by the reviewer.
+The `config.json` and `reviewer-prompt.md` next to `index.ts` are **bundled
+defaults**. When this extension is installed as a pi package, that directory is
+managed by pi and reset on `pi update`, so edit your settings outside the
+package instead. The extension resolves configuration with this precedence
+(highest first):
+
+**Model / thinking level**
+
+1. Tool call parameter (`model`, `thinking`)
+2. Environment variables `CODE_REVIEW_MODEL`, `CODE_REVIEW_THINKING`
+3. User config file `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/code-review.json`
+4. Bundled `config.json`
+5. Hardcoded fallback (`claude-sonnet-4-6`, no thinking)
+
+The user config file uses the same shape as the bundled default:
 
 ```json
 {
@@ -68,14 +82,29 @@ Edit `config.json` to set the default model and thinking level used by the revie
 }
 ```
 
-Fields:
+Create it once and it survives package updates:
 
-- `model`: The default model for reviews.
-- `thinking`: Optional thinking level, for example `off`, `medium`, or `high`, depending on model support.
+```bash
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker"
+cat > "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/code-review.json" <<'EOF'
+{
+  "model": "anthropic-vertex/claude-sonnet-4-6",
+  "thinking": "medium"
+}
+EOF
+```
 
-The extension re-reads `config.json` every time `code_review` runs, so configuration changes do not require `/reload`.
+**Reviewer prompt**
 
-If no model is provided in the tool call or config file, the extension falls back to `claude-sonnet-4-6` and shows a warning.
+1. Environment variable `CODE_REVIEW_PROMPT_FILE` (path to a prompt file)
+2. User file `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/code-review-reviewer-prompt.md`
+3. Bundled `reviewer-prompt.md`
+
+The extension re-reads configuration every time `code_review` runs, so changes
+do not require `/reload`.
+
+If no model is provided in the tool call, env, or any config file, the extension
+falls back to `claude-sonnet-4-6` and shows a warning.
 
 ## Usage
 
@@ -156,13 +185,15 @@ your own risk and always check what the agent is doing.
 
 ### The review uses the wrong model
 
-- Check `config.json`.
-- Pass a model override in the review request.
+- Check the precedence chain under [Configuration](#configuration): a tool
+  parameter or `CODE_REVIEW_MODEL` env var overrides your config file.
+- Check `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/code-review.json`.
 - Restart or `/reload` is not required for config changes, since the extension re-reads config on each run.
 
 ### The review fails with no prompt found
 
-Make sure `reviewer-prompt.md` is next to `index.ts` in the extension directory.
+The extension falls back to the bundled `reviewer-prompt.md` next to `index.ts`.
+If you set `CODE_REVIEW_PROMPT_FILE`, make sure it points at an existing file.
 
 ### The review fails to start pi
 

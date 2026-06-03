@@ -1,12 +1,7 @@
 # Loki Local Configuration (template)
 
-Copy this file to `loki.local.md` (same directory) and fill in values for your
-Loki deployment. `SKILL.md` reads `loki.local.md` to learn your profiles,
-tenant id, service shortcuts, and log field conventions. Without it the skill
-can still operate but the agent will have to ask you for addresses, services,
-and labels every time.
-
-`loki.local.md` is gitignored.
+Local configuration specifying what loki instance the agent should target and
+how.
 
 ## Connection Profiles
 
@@ -22,6 +17,9 @@ matches against user phrases like "prod" or "staging".
 **Org / tenant id:** `my-tenant` (omit if your Loki is single-tenant)
 
 **Default profile when the user does not specify one:** `dev`
+
+> Credentials (passwords, tokens) do NOT belong in this file. Set `logcli`'s
+> env vars in your shell profile instead. See the SKILL.md for details.
 
 ## Profile Detection From User Language
 

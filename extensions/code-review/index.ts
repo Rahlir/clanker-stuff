@@ -4,9 +4,15 @@
 * The main agent calls the `code_review` tool, gets structured feedback,
 * and can fix issues and re-review in a loop driven by prompt templates.
 *
-* Configuration:
-*   ~/.pi/agent/extensions/code-review/config.json   - default model
-*   ~/.pi/agent/extensions/code-review/reviewer-prompt.md - reviewer system prompt
+* Configuration resolution (highest precedence first):
+*   model/thinking: tool param -> env (CODE_REVIEW_MODEL / CODE_REVIEW_THINKING)
+*     -> user config (${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/code-review.json)
+*     -> bundled config.json next to this file -> hardcoded fallback
+*   reviewer prompt: env (CODE_REVIEW_PROMPT_FILE)
+*     -> user file (${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/code-review-reviewer-prompt.md)
+*     -> bundled reviewer-prompt.md next to this file
+*
+* User config lives outside the package so package updates never clobber it.
 */
 
 import { spawn } from "node:child_process";
@@ -84,9 +90,14 @@ function getExtensionDir(): string {
   return path.dirname(fileURLToPath(import.meta.url));
 }
 
-function readConfig(): ReviewConfig {
+function getUserConfigDir(): string {
+  const base = process.env.XDG_CONFIG_HOME?.trim() || path.join(os.homedir(), ".config");
+  return path.join(base, "pi-clanker");
+}
+
+function readJsonConfig(file: string): ReviewConfig {
   try {
-    const raw = fs.readFileSync(path.join(getExtensionDir(), "config.json"), "utf-8");
+    const raw = fs.readFileSync(file, "utf-8");
     const parsed = JSON.parse(raw);
     const config: ReviewConfig = {};
     if (typeof parsed.model === "string") config.model = parsed.model;
@@ -95,17 +106,29 @@ function readConfig(): ReviewConfig {
   } catch (e) {
     const isNotFound = (e as NodeJS.ErrnoException).code === "ENOENT";
     if (!isNotFound) {
-      console.error(`[code_review] Failed to read config.json: ${(e as Error).message}`);
+      console.error(`[code_review] Failed to read ${file}: ${(e as Error).message}`);
     }
     return {};
   }
 }
 
+// Bundled defaults shipped with the package, overlaid by the user's external
+// config so package updates never clobber user settings.
+function readConfig(): ReviewConfig {
+  const bundled = readJsonConfig(path.join(getExtensionDir(), "config.json"));
+  const user = readJsonConfig(path.join(getUserConfigDir(), "code-review.json"));
+  return { ...bundled, ...user };
+}
+
 function getReviewerPromptPath(): string {
+  const envPath = process.env.CODE_REVIEW_PROMPT_FILE?.trim();
+  if (envPath && fs.existsSync(envPath)) return envPath;
+  const userPath = path.join(getUserConfigDir(), "code-review-reviewer-prompt.md");
+  if (fs.existsSync(userPath)) return userPath;
   return path.join(getExtensionDir(), "reviewer-prompt.md");
 }
 
-const FALLBACK_MODEL = "claude-sonnet-4-6";
+const FALLBACK_MODEL = "openai-codex/gpt-5.4";
 
 function resolveModel(paramsModel?: string, configModel?: string): { model: string; isFallback: boolean } {
   const effective = paramsModel?.trim() || configModel?.trim() || FALLBACK_MODEL;
@@ -190,13 +213,13 @@ export default function (pi: ExtensionAPI) {
       model: Type.Optional(
         Type.String({
           description:
-            'Model to use for review, e.g. "claude-sonnet-4-6", "gpt-5.3-codex". Defaults to model in config.json.',
+            'Model to use for review, e.g. "anthropic/claude-sonnet-4-6", "openai-codex/gpt-5.4". Defaults to configured model.',
         }),
       ),
       thinking: Type.Optional(
         Type.String({
           description:
-            'Thinking level for the reviewer, e.g. "off", "medium", "high". Defaults to thinking in config.json.',
+            'Thinking level for the reviewer, e.g. "off", "medium", "high". Defaults to configured thinking level.',
         }),
       ),
     }),
@@ -205,10 +228,11 @@ export default function (pi: ExtensionAPI) {
       // Re-read config on each invocation so edits take effect without /reload
       const config = readConfig();
       cachedConfig = config;
-      const { model, isFallback } = resolveModel(params.model, config.model);
+      const envModel = process.env.CODE_REVIEW_MODEL?.trim();
+      const { model, isFallback } = resolveModel(params.model, envModel || config.model);
       if (isFallback) {
         ctx.ui.notify(
-          `code_review: No model specified in params or config.json, using fallback: ${FALLBACK_MODEL}`,
+          `code_review: No model specified in params, env, or config, using fallback: ${FALLBACK_MODEL}`,
           "warning",
         );
       }
@@ -228,7 +252,8 @@ export default function (pi: ExtensionAPI) {
       }
 
       // Build pi subprocess arguments
-      const thinking = params.thinking?.trim() || config.thinking?.trim();
+      const envThinking = process.env.CODE_REVIEW_THINKING?.trim();
+      const thinking = params.thinking?.trim() || envThinking || config.thinking?.trim();
       const piArgs = [
         "--mode", "json",
         "-p",

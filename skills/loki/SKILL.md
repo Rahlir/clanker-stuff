@@ -25,8 +25,14 @@ Setup reference (for the user, not the agent): https://grafana.com/docs/loki/lat
 
 ## Local Configuration
 
-Before answering any query, read the file `loki.local.md` from this skill's
-directory (the directory containing this `SKILL.md`). It supplies:
+User-specific config lives in:
+
+```
+${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/loki.local.md
+```
+
+Before answering any query, resolve that path (honoring `$XDG_CONFIG_HOME`, else
+`~/.config`) and read it. It supplies:
 
 - Connection profiles (name -> Loki address, default environment label)
 - Org / tenant id, if the deployment is multi-tenant
@@ -35,16 +41,44 @@ directory (the directory containing this `SKILL.md`). It supplies:
 - Known label values and JSON log field conventions
 - Default time range, limit, and tail timeout
 
-If `loki.local.md` does not exist:
+If that file does not exist:
 
 1. Tell the user the local config is missing.
-2. Point them at `loki.local.example.md` in the same directory as a template.
-3. Ask them for the minimum needed to proceed (Loki address, tenant id if any,
-   one or more service / label names) and continue with those values for the
-   current session.
+2. Offer to set it up. `loki.local.example.md` in this skill's directory is the
+   template. If the user agrees, create the config dir if needed and copy the
+   template there:
+   ```bash
+   mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker"
+   cp <skill-dir>/loki.local.example.md "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/loki.local.md"
+   ```
+   Then help them fill in their actual values (addresses, tenant id, service
+   shortcuts, label conventions).
+3. If the user just wants an answer now without persisting config, ask them for
+   the minimum needed (Loki address, tenant id if any, one or more service /
+   label names) and continue with those values for the current session.
 
 All concrete values in this file are placeholders. Resolve them from the local
 config or from explicit user input.
+
+## Credentials
+
+`loki.local.md` is for non-secret config only (profiles, service shortcuts,
+labels). **Never** put passwords or tokens in it, and never write them to disk.
+
+Authentication is supplied entirely through `logcli`'s native environment
+variables, which it reads automatically:
+
+- `LOKI_USERNAME` / `LOKI_PASSWORD` - HTTP basic auth
+- `LOKI_BEARER_TOKEN` - bearer token, or `LOKI_BEARER_TOKEN_FILE` to point at a
+  file holding the token (keeps it off the process list and out of shell history)
+- `LOKI_ORG_ID` - tenant id (may come from here instead of `loki.local.md`)
+
+Do not pass `--username`, `--password`, or `--bearer-token` on the command line;
+rely on the env vars so secrets never appear in commands or transcripts.
+
+If a query fails with `401` or `403`, the user is missing credentials. Tell them
+to set the relevant variable(s) in their shell profile (`~/.profile` or
+`~/.zprofile`) and retry. Do not export them or persist them yourself.
 
 ## Base Command
 

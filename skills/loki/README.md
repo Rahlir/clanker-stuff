@@ -46,32 +46,40 @@ logcli --version
 
 The `SKILL.md` file is intentionally generic. All deployment-specific values
 (Loki addresses, tenant id, service names, environment labels, log field
-conventions) live in a separate file in this directory:
+conventions) live in a separate file **outside** this package, in your user
+config dir:
 
 ```
-skills/loki/
-├── README.md
-├── SKILL.md
-├── loki.local.md           <- your deployment's config (gitignored)
-├── loki.local.example.md   <- template, copy and edit
-└── examples/queries.md
+~/.config/pi-clanker/loki.local.md   (honors $XDG_CONFIG_HOME)
 ```
+
+It lives outside the package because the install directory is managed by pi and
+reset on every `pi update`; anything kept inside would be wiped.
 
 To set up:
 
-1. Copy the template:
+1. Copy the template (run from this skill's directory):
    ```bash
-   cp skills/loki/loki.local.example.md skills/loki/loki.local.md
+   mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker"
+   cp loki.local.example.md "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/loki.local.md"
    ```
-2. Edit `loki.local.md` with your Loki addresses, tenant id (if any), service
-   shortcuts, and known label values.
+2. Edit `~/.config/pi-clanker/loki.local.md` with your Loki addresses, tenant
+   id (if any), service shortcuts, and known label values.
 3. The agent will read it automatically the next time you invoke the skill.
 
-`loki.local.md` is listed in the repository's `.gitignore` so your private
-hostnames and service names never get committed.
+Keeping the config under `~/.config/pi-clanker/` means your private hostnames
+and service names never get committed and survive package updates.
 
-If `loki.local.md` is missing, the agent will tell you and ask for the minimum
+If the file is missing, the agent will tell you and ask for the minimum
 information needed to answer the current question.
+
+## Credentials
+
+Secrets never go in `loki.local.md`. If your Loki requires authentication, set
+`logcli`'s native environment variables in your shell profile (`~/.profile` /
+`~/.zprofile`): `LOKI_USERNAME` / `LOKI_PASSWORD` for basic auth, or
+`LOKI_BEARER_TOKEN` / `LOKI_BEARER_TOKEN_FILE` for a bearer token. `logcli`
+picks them up automatically. The agent will never write or export credentials.
 
 ## Example Prompts
 
@@ -86,8 +94,7 @@ information needed to answer the current question.
 ## Files
 
 - `SKILL.md` ‑ generic, agent-facing instructions and command templates.
-- `loki.local.md` ‑ your deployment's profiles, services, and conventions
-  (gitignored).
-- `loki.local.example.md` ‑ template for the local config.
+- `loki.local.example.md` ‑ template for the local config; copy it to
+  `~/.config/pi-clanker/loki.local.md`.
 - `examples/queries.md` ‑ reference query patterns with placeholders plus one
   fully resolved neutral example.

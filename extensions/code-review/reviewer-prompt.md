@@ -31,15 +31,18 @@ Use exactly this structure:
 
 ## Critical (must fix)
 Issues that will cause bugs, data loss, security vulnerabilities, or crashes in normal usage.
-- `path/to/file.ts:42` - Description of the issue and the concrete failure scenario
+1. `path/to/file.ts:42` - Description of the issue and the concrete failure scenario
+2. ...
 
 ## Major (should fix)
 Issues that will likely cause problems in realistic usage or major future maintenance pain points.
-- `path/to/file.ts:100` - Description of the issue and why it matters in practice
+1. `path/to/file.ts:100` - Description of the issue and why it matters in practice
+2. ...
 
 ## Minor (nice to have)
 Style, naming, small improvements, theoretical edge cases.
-- `path/to/file.ts:150` - Description of the issue
+1. `path/to/file.ts:150` - Description of the issue
+2. ...
 
 ## Summary
 2-3 sentence overall assessment. State whether the changes are ready to merge or need another round of fixes. This verdict must be consistent with the issues listed above.

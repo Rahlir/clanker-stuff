@@ -1,4 +1,4 @@
-# clunker-stuff
+# clanker-stuff
 
 My personal collection of AI-agent workflow assets: prompts, skills, and pi
 extensions that I use for day-to-day coding work.
@@ -11,70 +11,68 @@ useful in two ways:
 - **As reference material**, if you want to adapt the workflows, safety rules,
   review prompts, or planning templates to your own AI-agent setup.
 
-Most of the prompts and skills are plain Markdown, so they are not inherently
-tied to pi. The only pi-specific components are the extensions in `extensions/`.
+The prompts are plain Markdown and skills follow [agent skills
+spec](https://agentskills.io/specification), so they are not inherently tied to
+`pi`. The only pi-specific components are the extensions in `extensions/`.
 
-Note that I also use other skills and extensions (like
-[glab](https://gitlab.com/gitlab-org/ai/skills/-/blob/main/skills/glab/SKILL.md?ref_type=heads)
-or [questionnaire](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/examples/extensions/questionnaire.ts)),
-but these are maintained by others and I re-use them "as is" or with only minor
-modifications. Hence, I don't include them here.
+## Related skills and extensions
+
+Some assets here reference skills and extensions that are maintained by others
+and are **not** bundled in this repo. The repo works without them, but for the
+full out-of-the-box experience install the ones whose features you want, since
+the referencing prompt or skill assumes the tool is available.
+
+| External tool | Type | Used by (in this repo) | Source |
+|---------------|------|------------------------|--------|
+| `glab` | skill | `prompts/mr-review.md` (gathers MR context) | [gitlab-org/ai/skills](https://gitlab.com/gitlab-org/ai/skills/-/blob/main/skills/glab/SKILL.md?ref_type=heads) |
+| `browser-tools` | skill | `prompts/debug.md` (replicate frontend workflow in a browser) | [badlogic/pi-skills](https://github.com/badlogic/pi-skills) (Mario Zechner) |
+| `questionnaire` | extension | `skills/grill-me/SKILL.md` (structured question batches) | [earendil-works/pi examples](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/questionnaire.ts) |
+
+I re-use these "as is" or with only minor modifications, so they are not
+included here. Install them through their own sources.
+
+Note also that the review prompts (`prompts/implement-and-review.md`,
+`prompts/perform-review-loop.md`) rely on the `code_review` tool, which is
+provided by this repo's own `extensions/code-review`, so no external install is
+needed for those, but they will not work in non-pi harnesses.
 
 ## Contents
 
 ```text
 .
-├── extensions/
-│   ├── code-review/              # pi extension that adds a code_review tool
-│   └── model-markers/            # pi extension that persists model/thinking changes inline
-├── prompts/                      # reusable prompt templates
-└── skills/                       # agent workflow instructions and references
-    ├── big-feature-workflow/
-    ├── jira/
-    └── loki/
+├── extensions/                   # pi extensions
+├── prompts/                      # reusable prompt templates (pi specific format)
+└── skills/                       # agent skills (agent skills spec - https://agentskills.io/specification)
 ```
 
 ## How to use this repository
 
 ### If you use pi
 
-You can install the parts you want into pi's agent configuration directory.
-
-Symlink installation, useful if you want to pull updates later:
-
-```bash
-mkdir -p ~/.pi/agent/extensions ~/.pi/agent/prompts ~/.pi/agent/skills
-
-ln -sfn "$PWD/extensions/code-review" ~/.pi/agent/extensions/code-review
-ln -sfn "$PWD/extensions/model-markers" ~/.pi/agent/extensions/model-markers
-ln -sfn "$PWD/prompts" ~/.pi/agent/prompts
-ln -sfn "$PWD/skills/big-feature-workflow" ~/.pi/agent/skills/big-feature-workflow
-ln -sfn "$PWD/skills/jira" ~/.pi/agent/skills/jira
-ln -sfn "$PWD/skills/loki" ~/.pi/agent/skills/loki
-```
-
-Copy installation:
+This repository is a pi package (see `package.json`), so the recommended way to
+install it is pi's package manager. This pulls in all extensions, skills, and
+prompts in one step and gives you a clean update path.
 
 ```bash
-mkdir -p ~/.pi/agent/extensions ~/.pi/agent/prompts ~/.pi/agent/skills
-
-cp -R extensions/code-review ~/.pi/agent/extensions/code-review
-cp -R extensions/model-markers ~/.pi/agent/extensions/model-markers
-cp -R prompts/* ~/.pi/agent/prompts/
-cp -R skills/big-feature-workflow ~/.pi/agent/skills/big-feature-workflow
-cp -R skills/jira ~/.pi/agent/skills/jira
-cp -R skills/loki ~/.pi/agent/skills/loki
+pi install git:github.com/Rahlir/clanker-stuff@v0.1.0    # global (~/.pi/agent)
+pi install -l git:github.com/Rahlir/clanker-stuff@v0.1.0  # project-local (.pi/)
 ```
 
-The `loki` skill needs a small extra step: copy `skills/loki/loki.local.example.md`
-to `skills/loki/loki.local.md` (or to the same path under your installed copy)
-and fill in your Loki addresses, tenant id, and service names. See the [loki
-skill README](skills/loki/README.md) for details.
+Replace `@v0.1.0` with the tag you want to pin to. Project-local installs are
+written to `.pi/settings.json`, which you can commit so teammates get the same
+tooling automatically on startup.
+
+Update later with:
+
+```bash
+pi install git:github.com/Rahlir/clanker-stuff@<new-tag>  # move to a new tag
+pi update --extensions                                    # reconcile pinned refs
+```
+
+Use `pi list` to see installed packages and `pi config` to enable or disable
+individual extensions, skills, or prompts from this package.
 
 Restart pi after installing, or run `/reload` in an existing pi session.
-
-For project-local setup, copy or symlink the same directories under a project's
-`.pi/` configuration directory instead of `~/.pi/agent/`.
 
 ### If you use Claude Code, Codex, Amp, Droid, opencode, or a similar agent
 
@@ -84,71 +82,29 @@ skills spec, reusable prompts, slash commands, or custom instructions.
 
 Typical adaptation paths:
 
-- copy `skills/*/SKILL.md` into your agent's skills directory, adjusting
+- copy or symlink `skills/*/SKILL.md` into your agent's skills directory, adjusting
   metadata if your agent uses a slightly different format;
-- copy files from `prompts/` into your agent's prompt, command, or template
+- copy or symlink files from `prompts/` into your agent's prompt, command, or template
   directory;
-- reuse `skills/big-feature-workflow/templates/` as-is for plan/task/devlog
-  artifacts;
-- adapt tool names and command references where your agent differs from pi.
+- You might have to adapt tool names and command references where your agent
+  differs from pi.
 
 Some files mention pi-specific concepts such as `/reload`, extension loading,
 or the `code_review` tool. Treat those as pi integration details, not as core
 parts of the workflows.
 
-## Components
+## Configuration and secrets
 
-### [`extensions/code-review/`](extensions/code-review/)
-
-A pi-specific extension that adds a `code_review` tool. It runs a separate
-reviewer subagent and reports findings by severity. See the [extension
-README](extensions/code-review/README.md) for installation, configuration,
-usage, and troubleshooting.
-
-### [`extensions/model-markers/`](extensions/model-markers/)
-
-A pi-specific extension that persists model and thinking-level changes as
-inline custom messages in the session, so they remain visible after session
-reload, `/resume`, `/tree` branch navigation, and `/fork`. By default pi only
-shows a transient "Switched to ..." notification at the moment of the change;
-this extension makes the change durable, branch-scoped, and visible in chat
-history. See the [extension README](extensions/model-markers/README.md) for
-details.
-
-### [`prompts/`](prompts/)
-
-Reusable prompt templates for debugging, suggestions, review, GitLab MR review,
-implementation with review, and review-fix loops. They are plain Markdown and
-should map cleanly to prompt or command systems in Claude Code, Codex, Amp,
-Droid, opencode, and similar agents.
-
-### [`skills/big-feature-workflow/`](skills/big-feature-workflow/)
-
-A structured workflow for planning, implementing, and reviewing larger features
-or refactors through persistent `docs/ai/` artifacts. See the [big feature
-workflow README](skills/big-feature-workflow/README.md) for details.
-
-### [`skills/jira/`](skills/jira/)
-
-A Jira workflow skill built around the local `jira` CLI. See the [Jira skill
-README](skills/jira/README.md) for requirements, examples, and safety rules.
-
-### [`skills/loki/`](skills/loki/)
-
-A Loki log exploration skill built around the `logcli` CLI. Translates plain
-language requests into LogQL queries for searching, error hunting, request
-tracing, live tailing, and exporting logs. Deployment specific values (Loki
-addresses, tenant id, service names, label conventions) live in a gitignored
-`loki.local.md` next to the skill, so the published skill stays generic. See
-the [loki skill README](skills/loki/README.md) for setup.
+See each component's own README / SKILL.md for the exact setup steps.
 
 ## Updating
 
-If you installed with symlinks, pull updates in this repository and reload your
-agent if needed.
+If you installed the pi package, pin to a new tag with
+`pi install git:github.com/Rahlir/clanker-stuff@<new-tag>` and run
+`pi update --extensions` to reconcile the checkout, then reload your agent.
 
-If you copied files, copy the updated directories into your agent configuration
-again.
+If you installed with symlinks or copies, pull updates in this repository
+(re-copy) and reload your agent if needed.
 
 ## Notes
 

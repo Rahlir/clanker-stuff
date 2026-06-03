@@ -100,9 +100,20 @@ jira open KEY
 5. Create with `jira issue create`.
 6. Verify the created issue.
 
+**Body markup and the create vs edit quirk:**
+- Some Jira instances (Server / Data Center) render **wiki markup**, not
+  Markdown. On those, write descriptions in wiki markup (`h2.` headings,
+  `*` bullets, `#` numbered lists, `{{...}}` monospace, `{code}{code}`
+  blocks).
+- `jira issue create` converts a Markdown `-b` body to the instance format,
+  but `jira issue edit` sends the body **raw**. So a body that rendered fine
+  on create can break on a later edit. Pass already-final wiki markup to
+  `edit` on wiki-markup instances.
+
 **Epic / parent handling:**
 - If the user mentions an epic, parent epic, parent issue, or asks for a Story/Task to be under an epic, use `--parent EPIC-KEY` when creating the issue.
 - Do not use `--custom` fields for Epic Link. With `jira` CLI, epic placement is done with `--parent`.
+- On non-cloud Jira (Server / Data Center, classic projects), the Epic Link of an existing issue is stored in an instance-specific `customfield_*`, not in `fields.parent`. When inspecting raw issue JSON to find which epic an issue belongs to, scan the `customfield_*` entries rather than assuming `fields.parent` is populated. The specific field id varies by instance, so detect it per ticket instead of hardcoding.
 
 **Updating tickets:**
 1. Fetch issue details first with `jira issue view ISSUE-KEY`.
