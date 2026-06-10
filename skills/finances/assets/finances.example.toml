@@ -26,3 +26,33 @@ commodities = ["USD", "EUR", "VUG", "SHA", "T", "NVDA", "MRVI"]
 # A valued report is flagged as possibly outdated if the newest `P` price for
 # any monitored commodity is older than this many days.
 stale_after_days = 7
+
+[import]
+# Paths are relative to the directory of LEDGER_FILE. inbox and archive being
+# nested inside the staging directory is intentional (one import/ tree); raw
+# downloads in inbox/ are not stale staging files - never "clean them up".
+inbox = "import/inbox"        # drop raw bank downloads here
+staging = "import"            # staging CSVs + <name>.csv.rules live here
+archive = "import/archive"    # raws move to <archive>/YYYY-MM/ after import
+# Accounts that per-account rules use as catch-alls; transactions landing here
+# are treated as "unknown payee" during the categorization loop.
+fallback_accounts = ["Expenses:Misc", "Income:Misc"]
+
+# One entry per statement source. The table key is the staging name:
+# staging file <staging>/<name>.csv, rules <staging>/<name>.csv.rules.
+
+[import.accounts.checking]
+match = "12-3456789"            # regex tried against filename + file head
+account = "Assets:Checking"
+format = "csv"
+encoding = "windows-1250"       # only if clean-csv.py auto-detect needs help
+
+[import.accounts.card]
+match = "VÝPIS Z ÚČTU KE KREDITNÍ KARTĚ"
+account = "Liabilities:Card"
+format = "pdf-statement"        # PDF with opening/closing balances
+
+[import.accounts.revolut-czk]
+match = "account-statement.*czk"
+account = "Assets:Revolut"
+format = "csv"                  # per-currency export: one entry per currency

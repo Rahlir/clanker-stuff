@@ -1,6 +1,6 @@
 ---
 name: finances
-description: Manage personal finances tracked in an hledger plain-text journal. Use when the user asks about spending, account balances, net worth, equity, cash flow, income vs expenses, savings rate, investment value or ROI, budget status, wants to search past transactions, or wants to record a new transaction. Produces reports and appends new transactions with hledger validation; never edits or deletes existing entries.
+description: Manage personal finances tracked in an hledger plain-text journal. Use when the user asks about spending, account balances, net worth, equity, cash flow, income vs expenses, savings rate, investment value or ROI, budget status, wants to search past transactions, record a new transaction, import bank statements (CSV or PDF), or set up finance tracking from scratch. Produces reports and appends validated transactions; never edits or deletes existing entries.
 ---
 
 # Finances (hledger)
@@ -13,28 +13,42 @@ valuation defaults, and interprets the output.
 
 ## Scope
 
-This skill **reads** the journal and **appends new transactions** to it, nothing
-else.
+This skill **reads** the journal and **appends new transactions** to it -
+manually recorded ones and bank-statement imports - nothing else.
 
 - **Read** with: `balance`/`bal`, `balancesheet`/`bs`, `balancesheetequity`/`bse`,
   `incomestatement`/`is`, `cashflow`/`cf`, `register`/`reg`, `aregister`/`areg`,
   `roi`, `prices`, `print`, `accounts`, `payees`, `descriptions`, `commodities`,
   `tags`, `stats`, `activity`, `check`.
-- **Write** only by appending a new transaction through the guarded flow in
-  [Recording a transaction](#recording-a-transaction). One auxiliary write is
-  also permitted there: adding a new `account` declaration to
-  `definitions.journal` after explicit user confirmation (step 2 of the flow).
+- **Write** to the journal only by appending: a single transaction through the
+  guarded flow in [Recording a transaction](#recording-a-transaction), or a
+  batch appended by `hledger import` through the guarded flow in
+  [references/import.md](references/import.md). Auxiliary writes permitted by
+  those flows: confirmed `account` declarations, import staging/rules files,
+  `.latest` dedup state, archive moves, and `finances.toml` edits the user
+  confirms.
 
-Never edit or delete existing transactions, never add or modify `P` price
-directives (they are interspersed through the journal by date; updating them is
-a later phase), and never run a subcommand that rewrites files. If the
-user asks to import bank statements or update prices, tell them that is out of
-scope for now.
+Never edit or delete existing transactions - the sole exception is **adoption
+remediation** per [references/setup.md](references/setup.md), where each fix
+is individually diffed and confirmed by the user. Never add or modify `P`
+price directives (they are interspersed through the journal by date; updating
+them is a later phase), and never run a subcommand that rewrites files. If
+the user asks to update market prices, tell them that is out of scope for
+now.
 
 ## Prerequisites
 
 Run these checks first. If something is missing, help the user set it up using
-the sections below. Do not guess paths or invent data.
+the sections below. Do not guess paths or invent data. Two special cases route
+to [references/setup.md](references/setup.md):
+
+- **No journal at all**: walk through "Starting from zero" - this skill can
+  start someone from scratch.
+- **A journal exists but this skill has never been used with it** (e.g. no
+  `finances.toml` yet, or the first write is about to happen): run "Adopting
+  an existing journal" first - inventory its conventions and verify the
+  validation gates pass *before* the first write. Old journals often fail
+  them for pre-existing reasons, which would brick every write flow.
 
 ```bash
 which hledger            # the CLI must be installed
@@ -133,6 +147,20 @@ For investment or multi-commodity entries (security purchases, currency
 conversions), use the dedicated section in
 [references/conventions.md](references/conventions.md) and double-confirm the
 price notation.
+
+## Importing bank statements
+
+When the user wants to import bank exports (CSV or PDF), follow
+[references/import.md](references/import.md) exactly. In brief: route the file
+via `finances.toml`'s `[import]` config, stage it (mechanical cleanup for CSV;
+extract-transcribe-verify for PDF, with mandatory count and sum gates),
+preview through the account's rules file, resolve unknown payees with the user
+and write them back as durable rules, then `hledger import --dry-run`, confirm,
+import, and run the validation gate. Imports are deduplicated by `.latest`
+state files; imported entries are cleared (`*`), manual ones pending (`!`).
+Onboarding a new bank account or starting with no journal at all:
+[references/import.md](references/import.md) and
+[references/setup.md](references/setup.md).
 
 ## Stale-price guard
 
