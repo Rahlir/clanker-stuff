@@ -1,0 +1,28 @@
+# finances.toml - configuration for the `finances` hledger skill.
+#
+# Copy this file beside your LEDGER_FILE and customize it, e.g.:
+#   cp finances.example.toml "$(dirname "$LEDGER_FILE")/finances.toml"
+#
+# The journal path itself is NOT configured here: it comes from $LEDGER_FILE.
+# This file only holds reporting defaults the skill applies on top of it.
+
+[valuation]
+# Commodity that "how much / what's it worth" answers should be reported in.
+base_currency = "CZK"
+
+# Passed to hledger as `--value=<default_value>` for valued reports.
+# Common choices: "end,CZK" (period-end prices), "now,CZK", "then,CZK".
+default_value = "end,CZK"
+
+# Pass `--infer-market-prices` so hledger can derive prices from transactions
+# in addition to explicit `P` directives. Set false to use only `P` directives.
+infer_market_prices = true
+
+[prices]
+# Commodities whose `P` prices the stale-price guard should check before any
+# valued report. List the foreign currencies and securities you actually hold.
+commodities = ["USD", "EUR", "VUG", "SHA", "T", "NVDA", "MRVI"]
+
+# A valued report is flagged as possibly outdated if the newest `P` price for
+# any monitored commodity is older than this many days.
+stale_after_days = 7
