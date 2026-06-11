@@ -179,6 +179,41 @@ duplicates), get explicit confirmation, append to the dedicated
 `prices.journal`, and run the validation gate with byte-exact rollback on
 failure. The one-time `prices.journal` setup also lives there.
 
+## Git sync
+
+Applies only when the journal directory is a git repo; otherwise skip this
+section entirely:
+
+```bash
+git -C "$(dirname "$LEDGER_FILE")" rev-parse --is-inside-work-tree 2>/dev/null
+```
+
+This section is the user's **standing approval** for exactly the operations
+below, in this repo only. Anything else (reset, rebase, checkout, amend,
+force-push, ...) still requires an explicit ask.
+
+- **Before the first write of a session**, and also whenever the user asks
+  for up-to-date / latest numbers or mentions having worked on another
+  machine: `git pull --ff-only`. If it fails
+  (diverged history, conflicting local state), stop all write flows, report,
+  and let the user resolve - never merge or rebase journal files yourself.
+  Read-only reporting may continue.
+- **After each successful write flow** (manual transaction, import, price
+  refresh, onboarding/config writes - validation gates already passed):
+  commit automatically and mention the commit in your reply. Stage **only
+  the files that flow touched** - never `git add -A`; the repo may carry
+  unrelated uncommitted changes that are not yours to commit. If a file the
+  flow touched already had unrelated local modifications, ask instead of
+  committing. Message style: `txn: <payee>`, `import: <name> <period>`,
+  `prices: refresh <date>`, `setup: <what>`.
+- **Push after committing** (batch several commits into one push when flows
+  run back-to-back). If the push is rejected, report it - do not force-push;
+  a mid-session pull follows the same ff-only rule.
+- Git is the sync and audit layer, not the undo mechanism: failed gates are
+  rolled back byte-exactly *before* any commit happens, so a commit always
+  captures a journal that passes the gates. Never revert or reset commits to
+  undo a write; if something committed must be undone, ask the user.
+
 ## Stale-price guard
 
 Market valuation (net worth, equity, holdings value, anything using

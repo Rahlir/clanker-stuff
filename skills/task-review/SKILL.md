@@ -33,8 +33,21 @@ never scans, sorts, dedups, or moves anything.
 
 - All `task` CLI operations follow the **taskwarrior skill** and its
   `taskwarrior.local.md` (capture rule, decay policy, due policy).
-- Notes repo: `~/Documents/rahlir-notes` on the user's machines; the
-  seeded clone in the chatbot sandbox. If not found, ask - do not guess.
+- Notes repo location: `$ZK_NOTEBOOK_DIR` if set (the environment
+  decides; never override it), else `~/Documents/rahlir-notes` (user
+  machine convention). Do not guess other paths.
+- If the repo is missing at that location:
+  - If you are able to clone from github (requires Github SSH access on the
+    device), ask the user for approval and clone with:
+    `git clone git@github.com:Rahlir/rahlir-notes.git <location>`
+  - Otherwise, report that the repo is missing and continue with degraded
+    refresh.
+- If the repo is unavailable (not seeded, no auth, clone declined),
+  run a **degraded refresh**: all taskwarrior steps proceed normally;
+  skip daily-note mining (step 3) and the focus.md write (step 10).
+  Like the Jira pass, state explicitly that these were skipped, and
+  note that the focus entry should be written at the next refresh on a
+  device with the repo.
 - All writes to the notes repo follow the repo's `AGENTS.md` (git
   hygiene; agent commits/pushes there are pre-approved within its
   rules).

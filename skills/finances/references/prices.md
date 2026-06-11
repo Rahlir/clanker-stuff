@@ -110,6 +110,8 @@ head -c "$BYTES_BEFORE" "$PRICES" > "$PRICES.tmp" && mv "$PRICES.tmp" "$PRICES"
 
 Then rerun the valued report that triggered the refresh, and mention which
 commodities (if any) are still stale because they failed or have no source.
+If the journal directory is a git repo, commit `prices.journal` and push per
+the **Git sync** policy in SKILL.md.
 
 Note: `ordereddates` does not apply across files, and `P` directives are not
 transactions - appending newest-last to `prices.journal` keeps it tidy, but a

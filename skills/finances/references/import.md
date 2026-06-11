@@ -361,6 +361,10 @@ mkdir -p <archive>/YYYY-MM && mv inbox/<raw file> <archive>/YYYY-MM/
 Use the statement period's year-month. Staging files may be overwritten by the
 next import; `.latest.*` files must stay where they are.
 
+If the journal directory is a git repo, finish by applying the **Git sync**
+policy from SKILL.md: commit the files this import touched (source journal,
+rules, `.latest`, archive move, `finances.toml` if edited), then push.
+
 ## Onboarding a new account
 
 Needed once per new source (new bank account, card, or fintech currency).
