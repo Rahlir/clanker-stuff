@@ -94,9 +94,17 @@ few lines.
    leftover `+next` tags: one line ("still preempting: X, Y?"); clear
    any not reconfirmed, so the flag stays scarce. Mark confirmed
    completions done. Run `task synchronize`.
-10. **Write focus.md** (format below): prepend the new week section from
-    the user's brain dump + decisions; append the outcome line to the
-    previous section. Commit and push per the repo's `AGENTS.md`.
+10. **Write focus.md** (format below). The prose must go through the
+    user; it is a personal piece of writing, not generated text they
+    never see:
+    - Briefly interview the user about the week's focus (1-2 questions:
+      what's the through-line, why does it matter). The brain dump and
+      decisions provide the raw material; the interview provides the
+      framing.
+    - Draft the section from their answers and **show it for review**.
+      Apply their edits until they approve.
+    - Prepend the approved section; append the outcome line to the
+      previous section. Commit and push per the repo's `AGENTS.md`.
 11. **Close.** One screen: the new active set, hard deadlines, and what
     passes ran (Jira yes/no). Done.
 
@@ -116,19 +124,25 @@ tags:
 ---
 # Weekly Focus
 
-## Week of 2026-06-15
+## Week of [[daily/2026-06-15]]
 
-Prose, 2-5 sentences, written from the user's brain dump in their
-voice. What matters and why; hard deadlines in words.
+Prose, 2-5 sentences, in the user's voice, drafted from the focus
+interview and approved by the user. What matters and why; hard
+deadlines in words.
 
-## Week of 2026-06-08
+## Week of [[daily/2026-06-08]]
 
 (older entry, untouched)
 
 _Outcome:_ shipped the selector; envelope decision slipped to web team.
 ```
 
-- Section heading: `## Week of <ISO date of that week's Monday>`.
+- Section heading: `## Week of [[daily/<ISO date of that week's
+  Monday>]]` - a wiki link to that Monday's daily note, like the dated
+  sections in project notes.
+- The week prose is never written unilaterally: interview first, then
+  user-reviewed draft (step 10). The `_Outcome:_` line is exempt and
+  stays agent-written.
 - The `_Outcome:_` line is appended to the **previous** section during
   step 10, based on the momentum summary. One line, factual, no grades.
 - No task lists in this file. Tasks live in taskwarrior only.
