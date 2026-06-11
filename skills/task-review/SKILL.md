@@ -90,8 +90,10 @@ few lines.
    completions/closures. **Always state explicitly whether this pass ran
    or was skipped and why.**
 9. **Apply.** Rebuild the `+active` set (bulk tag add/remove for the
-   agreed set is pre-approved; no per-task confirmation theater). Mark
-   confirmed completions done. Run `task synchronize`.
+   agreed set is pre-approved; no per-task confirmation theater). Sweep
+   leftover `+next` tags: one line ("still preempting: X, Y?"); clear
+   any not reconfirmed, so the flag stays scarce. Mark confirmed
+   completions done. Run `task synchronize`.
 10. **Write focus.md** (format below): prepend the new week section from
     the user's brain dump + decisions; append the outcome line to the
     previous section. Commit and push per the repo's `AGENTS.md`.
