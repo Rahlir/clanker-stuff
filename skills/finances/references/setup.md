@@ -20,10 +20,15 @@ Create a main journal plus a definitions file it includes:
 
 ```
 finances/
-├── main.journal          # transactions; includes definitions.journal
+├── main.journal          # manual transactions; includes definitions.journal
 ├── definitions.journal   # account/commodity/tag declarations
 └── finances.toml         # skill config (from assets/finances.example.toml)
 ```
+
+Two more pieces appear later, each created by its own guarded flow when first
+needed - do not create them up front: `journal/` (per-source import journals,
+[import.md](import.md) onboarding) and `prices.journal`
+([prices.md](prices.md) setup).
 
 `definitions.journal` skeleton - adapt accounts and currency to the user
 (ask what they want to track; start small, accounts can be added any time):

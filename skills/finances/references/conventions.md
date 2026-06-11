@@ -128,15 +128,20 @@ explicitly before writing.
       Assets:Broker                1 VUG @@ 339.34 USD
       Assets:Broker
   ```
-- Do **not** add standalone `P` price directives here; market prices are a later
-  phase.
+- Do **not** add standalone `P` price directives to the main journal; fetched
+  prices are appended to the dedicated prices journal through the flow in
+  [prices.md](prices.md).
 
 ## Placement and ordering
 
 - The journal is kept in **date order** (`hledger check ordereddates` is part of
-  the gate). Insert a new entry immediately after the last *transaction* dated on
-  or before its date. For an entry dated today (the common case) that means after
-  the final transaction in the file.
+  the gate). The check validates each file **independently**: this rule governs
+  the hand-edited main journal, while imported entries land in per-source
+  journal files that `hledger import` keeps ordered on its own (see
+  [import.md](import.md), "Why per-source journals"). Insert a new entry
+  immediately after the last *transaction* dated on or before its date. For an
+  entry dated today (the common case) that means after the final transaction in
+  the file.
 - `P` price directives (and their `; Prices as of ...` headers) are interspersed
   through the file by date, not gathered in one trailing block. Skip over them
   when locating the insertion point, and never split or move a price block.

@@ -27,6 +27,22 @@ commodities = ["USD", "EUR", "VUG", "SHA", "T", "NVDA", "MRVI"]
 # any monitored commodity is older than this many days.
 stale_after_days = 7
 
+[prices.sources]
+# Where scripts/update-prices.py fetches each commodity's quote (Yahoo Finance
+# tickers). This may be a SUBSET of `commodities` above: anything without an
+# entry here is simply not auto-fetched and stays manually priced (the stale
+# guard will keep warning about it, which is correct).
+# `quote` is the currency the ticker is denominated in; the script refuses to
+# print a price if the API disagrees, which catches ticker changes/delistings.
+USD  = { ticker = "USDCZK=X", quote = "CZK" }
+EUR  = { ticker = "EURCZK=X", quote = "CZK" }
+VUG  = { ticker = "VUG",      quote = "USD" }
+T    = { ticker = "T",        quote = "USD" }
+NVDA = { ticker = "NVDA",     quote = "USD" }
+MRVI = { ticker = "MRVI",     quote = "USD" }
+# SHA: no source entry for now - Schaeffler's ticker changed after their 2024
+# share restructuring (SHA.DE -> SHA0.DE); re-add once you want it auto-fetched.
+
 [import]
 # Paths are relative to the directory of LEDGER_FILE. inbox and archive being
 # nested inside the staging directory is intentional (one import/ tree); raw
@@ -34,6 +50,10 @@ stale_after_days = 7
 inbox = "import/inbox"        # drop raw bank downloads here
 staging = "import"            # staging CSVs + <name>.csv.rules live here
 archive = "import/archive"    # raws move to <archive>/YYYY-MM/ after import
+# Per-source import journals: hledger import appends to <journals>/<name>.journal
+# (each included from the main journal), never to the main journal itself -
+# `hledger check ordereddates` is per-file, and statement periods overlap.
+journals = "journal"
 # Accounts that per-account rules use as catch-alls; transactions landing here
 # are treated as "unknown payee" during the categorization loop.
 fallback_accounts = ["Expenses:Misc", "Income:Misc"]

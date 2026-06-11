@@ -2,24 +2,26 @@
 
 Protocol for getting bank exports (CSV or PDF) into the journal. Every source
 funnels into the same shape: a **staging CSV** parsed by a per-account
-**rules file**, deduplicated and appended by **`hledger import`**, then
-validated and reconciled.
+**rules file**, deduplicated and appended by **`hledger import`** to the
+source's **own journal file**, then validated and reconciled.
 
 ```
 raw export (inbox)
   1. route       match the file to an account        ([import.accounts.*])
   2. stage       CSV: clean-csv.py  |  PDF: pdftotext + transcribe + verify
-  3. preview     hledger -f <staging> print  (via <staging>.rules)
+  3. preview     hledger -f <staging>/<name>.csv print  (via its .rules)
   4. categorize  fallback-account loop -> durable rules
-  5. import      dry-run -> user confirms -> hledger import -> validation gate
+  5. import      dry-run -> user confirms -> hledger import into the
+                 source's own journal -> validation gate
   6. reconcile   staged totals vs statement balances (report only)
   7. archive     raw file -> archive/YYYY-MM/
 ```
 
 Write surface of this workflow: staging CSVs, rules files, `.latest.*` state
-files, archive moves, and journal appends made by `hledger import`. The rules
-from SKILL.md still hold: never edit or delete existing journal entries, and
-every journal write is followed by the validation gate.
+files, archive moves, appends made by `hledger import` to per-source journal
+files, and the one-time confirmed `include` lines that connect those files.
+The rules from SKILL.md still hold: never edit or delete existing journal
+entries, and every journal write is followed by the validation gate.
 
 ## Configuration
 
@@ -32,6 +34,7 @@ paths resolve against the directory of `LEDGER_FILE`.
 | `inbox` | where the user drops raw downloads |
 | `staging` | where staging CSVs + rules files live |
 | `archive` | where raw files go after a successful import |
+| `journals` | directory of per-source import journals (`<journals>/<name>.journal`) |
 | `fallback_accounts` | the rules' catch-all accounts that mark a payee as "unknown" |
 | `accounts.<name>.match` | regex tried against the raw filename and its first lines/page; routes the file |
 | `accounts.<name>.account` | the journal account this source feeds |
@@ -39,7 +42,24 @@ paths resolve against the directory of `LEDGER_FILE`.
 | `accounts.<name>.encoding` | optional source encoding for `clean-csv.py` |
 
 `<name>` doubles as the staging filename: staging is `<staging>/<name>.csv`,
-rules `<staging>/<name>.csv.rules`, dedup state `.latest.<name>.csv`.
+rules `<staging>/<name>.csv.rules`, dedup state
+`<staging>/.latest.<name>.csv`, and the import target
+`<journals>/<name>.journal`.
+
+### Why per-source journals
+
+Imports never append to the main journal. Each source feeds its own journal
+file, included from the main one (created at
+[onboarding](#onboarding-a-new-account)). The reason is the validation gate:
+`hledger check ordereddates` validates date order **within each file
+independently**. Statements from different sources overlap in time, so
+appending them all to one file breaks date order as soon as a second source
+(or a manual entry dated after the batch) exists. With per-source files,
+the hand-edited main journal stays hand-ordered, and each source file stays
+ordered on its own: `hledger import` date-sorts every batch it appends, and
+successive statements from one source are chronological. Within one source,
+process catch-up statements **oldest-first** (stage and import one statement
+at a time).
 
 ## Rules architecture
 
@@ -101,6 +121,13 @@ The script only fixes encoding (auto-detect, or `--encoding` from config),
 line endings, and runs of spaces. Decimal commas are *not* converted - the
 rules file declares `decimal-mark ,` instead. Already-clean exports pass
 through unchanged.
+
+Treat it as a black box - there is no need to read its source. Its full
+contract: the input file is never modified; only the `-o` path is written
+(parent directories created as needed); the detected source encoding is
+reported on stderr; exit is nonzero on a missing input file. It does nothing
+semantic, so if staged numbers or fields look wrong, the problem is in the
+raw export or the rules file, not in this script.
 
 ### PDF inlet
 
@@ -211,20 +238,25 @@ explicitly accepts the remainder as Misc.
 ## Step 5 - Import
 
 ```bash
+# every import targets the source's own journal, never the main file:
+TARGET="<journals>/<name>.journal"
+
 # 0. rollback bookkeeping (import only ever appends, so a byte count is exact):
-BYTES_BEFORE=$(wc -c < "$LEDGER_FILE")
+BYTES_BEFORE=$(wc -c < "$TARGET")
 LATEST="<staging>/.latest.<name>.csv"        # full path: it lives beside the CSV
 [ -f "$LATEST" ] && cp "$LATEST" "$LATEST.bak"   # absent on a first import - that's fine
 
 # 1. preview exactly what would be appended:
-hledger import <staging>/<name>.csv --dry-run
+hledger import -f "$TARGET" <staging>/<name>.csv --dry-run
 ```
 
 Summarize the dry-run for the user - transaction count, date span, total per
 account - and get **explicit confirmation**. Then:
 
 ```bash
-hledger import <staging>/<name>.csv
+hledger import -f "$TARGET" <staging>/<name>.csv
+# gates run on the FULL journal (no -f, so $LEDGER_FILE): the new entries
+# must hold up in the context of every included file, not just their own.
 hledger check accounts ordereddates commodities   # gate part 1
 hledger check balanced                            # gate part 2 (own invocation)
 rm -f "$LATEST.bak"                               # gates passed: drop the backup
@@ -234,8 +266,7 @@ rm -f "$LATEST.bak"                               # gates passed: drop the backu
 
 ```bash
 # byte-exact truncation back to the pre-import state:
-head -c "$BYTES_BEFORE" "$LEDGER_FILE" > "$LEDGER_FILE.tmp" \
-  && mv "$LEDGER_FILE.tmp" "$LEDGER_FILE"
+head -c "$BYTES_BEFORE" "$TARGET" > "$TARGET.tmp" && mv "$TARGET.tmp" "$TARGET"
 # dedup state: restore the backup, or remove the .latest a first import created:
 if [ -f "$LATEST.bak" ]; then mv "$LATEST.bak" "$LATEST"; else rm -f "$LATEST"; fi
 ```
@@ -245,9 +276,10 @@ never leave `.latest` pointing past transactions that were rolled back.
 
 First import for an account (no `.latest` yet): the CSV may overlap history
 already in the journal. Preferred: stage only from the baseline/onboarding
-date forward. If the export cannot be date-limited, `hledger import --catchup`
-marks everything as seen (imports nothing) - then later exports import only
-newer transactions.
+date forward. If the export cannot be date-limited,
+`hledger import -f "$TARGET" <staging>/<name>.csv --catchup` marks everything
+as seen (imports nothing) - then later exports import only newer
+transactions.
 
 ## Step 6 - Reconcile (report, do not block)
 
@@ -289,19 +321,37 @@ Needed once per new source (new bank account, card, or fintech currency).
 1. **Declare the journal account** if new (propose-confirm flow from SKILL.md).
 2. **Add the `[import.accounts.<name>]` entry** to `finances.toml`: `match`,
    `account`, `format`, `encoding` if needed.
-3. **Author the rules file** `<staging>/<name>.csv.rules` interactively:
+3. **Create the source's journal file and include it** (same pattern as the
+   prices journal; show both writes and get confirmation first). The relative
+   `include` path resolves against the including file:
+
+   ```bash
+   mkdir -p <journals>
+   printf '; %s imports. Append-only; written by hledger import.\n' '<name>' \
+     > <journals>/<name>.journal
+   printf '\ninclude <journals>/<name>.journal\n' >> "$LEDGER_FILE"
+   ```
+
+   Verify: `hledger files` must list the new file, then run the gate -
+
+   ```bash
+   hledger check accounts ordereddates commodities
+   hledger check balanced
+   ```
+4. **Author the rules file** `<staging>/<name>.csv.rules` interactively:
    get a real export, stage it, then iterate: propose a skeleton -> preview
-   with `hledger -f staging print` -> fix -> repeat. Respect the
+   with `hledger -f <staging>/<name>.csv print` -> fix -> repeat. Respect the
    [rules architecture](#rules-architecture): include the shared categories
    file (directly, or via a per-bank base); if another account already uses
    the same bank's format, factor the format directives into a shared
    per-bank file instead of duplicating them; match the journal-wide category
    slot orientation.
-4. **Baseline.** Unless the journal already tracks this account up to the
+5. **Baseline.** Unless the journal already tracks this account up to the
    first import date, record an opening-balance transaction first (see
    [setup.md](setup.md), "Baselines"), dated at the start of the first
    statement period, using the statement's opening balance.
-5. Run the first import with the overlap handling from step 5.
+6. Run the first import with the overlap handling from step 5 of the import
+   protocol.
 
 ### Rules-authoring gotchas (each one verified the hard way)
 

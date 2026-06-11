@@ -1,6 +1,6 @@
 ---
 name: finances
-description: Manage personal finances tracked in an hledger plain-text journal. Use when the user asks about spending, account balances, net worth, equity, cash flow, income vs expenses, savings rate, investment value or ROI, budget status, wants to search past transactions, record a new transaction, import bank statements (CSV or PDF), or set up finance tracking from scratch. Produces reports and appends validated transactions; never edits or deletes existing entries.
+description: Manage personal finances tracked in an hledger plain-text journal. Use when the user asks about spending, account balances, net worth, equity, cash flow, income vs expenses, savings rate, investment value or ROI, budget status, wants to search past transactions, record a new transaction, import bank statements (CSV or PDF), update market prices, or set up finance tracking from scratch. Produces reports and appends validated transactions and prices; never edits or deletes existing entries.
 ---
 
 # Finances (hledger)
@@ -21,20 +21,22 @@ manually recorded ones and bank-statement imports - nothing else.
   `roi`, `prices`, `print`, `accounts`, `payees`, `descriptions`, `commodities`,
   `tags`, `stats`, `activity`, `check`.
 - **Write** to the journal only by appending: a single transaction through the
-  guarded flow in [Recording a transaction](#recording-a-transaction), or a
-  batch appended by `hledger import` through the guarded flow in
-  [references/import.md](references/import.md). Auxiliary writes permitted by
-  those flows: confirmed `account` declarations, import staging/rules files,
-  `.latest` dedup state, archive moves, and `finances.toml` edits the user
-  confirms.
+  guarded flow in [Recording a transaction](#recording-a-transaction), a
+  batch appended by `hledger import` to the source's own included journal
+  file through the guarded flow in
+  [references/import.md](references/import.md), or fetched `P` price
+  directives appended to the dedicated prices journal through the guarded
+  flow in [references/prices.md](references/prices.md). Auxiliary writes
+  permitted by those flows: confirmed `account` declarations, import
+  staging/rules files, `.latest` dedup state, archive moves, the one-time
+  prices-journal setup, and `finances.toml` edits the user confirms.
 
 Never edit or delete existing transactions - the sole exception is **adoption
 remediation** per [references/setup.md](references/setup.md), where each fix
-is individually diffed and confirmed by the user. Never add or modify `P`
-price directives (they are interspersed through the journal by date; updating
-them is a later phase), and never run a subcommand that rewrites files. If
-the user asks to update market prices, tell them that is out of scope for
-now.
+is individually diffed and confirmed by the user. Never modify or delete
+existing `P` price directives (older manual ones are interspersed through the
+main journal by date; new ones are only ever appended to the prices journal),
+and never run a subcommand that rewrites files.
 
 ## Prerequisites
 
@@ -102,6 +104,8 @@ If present, read it (it is small, read it directly) for:
 - `[valuation].infer_market_prices` - whether to pass `--infer-market-prices`.
 - `[prices].commodities` - the commodities to monitor in the stale-price guard.
 - `[prices].stale_after_days` - the freshness threshold for that guard.
+- `[prices.sources]` - per-commodity tickers for `scripts/update-prices.py`
+  (may be a subset of `commodities`; the rest stay manually priced).
 
 If it is absent, offer to create one from
 [assets/finances.example.toml](assets/finances.example.toml): copy it beside
@@ -156,11 +160,24 @@ via `finances.toml`'s `[import]` config, stage it (mechanical cleanup for CSV;
 extract-transcribe-verify for PDF, with mandatory count and sum gates),
 preview through the account's rules file, resolve unknown payees with the user
 and write them back as durable rules, then `hledger import --dry-run`, confirm,
-import, and run the validation gate. Imports are deduplicated by `.latest`
-state files; imported entries are cleared (`*`), manual ones pending (`!`).
+import **into the source's own journal file** (never the main journal - see
+"Why per-source journals" there), and run the validation gate. Imports are
+deduplicated by `.latest` state files; imported entries are cleared (`*`),
+manual ones pending (`!`).
 Onboarding a new bank account or starting with no journal at all:
 [references/import.md](references/import.md) and
 [references/setup.md](references/setup.md).
+
+## Updating market prices
+
+When the user wants fresh prices (or accepts the stale-guard's offer), follow
+[references/prices.md](references/prices.md) exactly. In brief: run
+`scripts/update-prices.py` (read-only - it prints `P` directives for the
+commodities mapped in `finances.toml`'s `[prices.sources]`), review the
+quotes against the current newest prices (flag large jumps, drop same-date
+duplicates), get explicit confirmation, append to the dedicated
+`prices.journal`, and run the validation gate with byte-exact rollback on
+failure. The one-time `prices.journal` setup also lives there.
 
 ## Stale-price guard
 
@@ -178,9 +195,11 @@ Use the commodity list from `finances.toml`'s `[prices].commodities` in the loop
 can be pushed out by other commodities' recent entries). Compare each
 commodity's most recent price date against today. If any is older than `stale_after_days`, warn
 the user that the valuation may be outdated, name the stale commodities and how
-old each is, and note that prices are entered by hand. Do not block the report;
-just caveat it. Skip this guard entirely for reports in the base commodity that
-need no conversion.
+old each is. Then **offer to refresh them** via
+[Updating market prices](#updating-market-prices) - offer, don't force, and
+note that commodities without a `[prices.sources]` entry stay manual. Do not
+block the report; just caveat it. Skip this guard entirely for reports in the
+base commodity that need no conversion.
 
 ## Quick reference
 
