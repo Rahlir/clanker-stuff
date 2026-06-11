@@ -52,14 +52,20 @@ account Expenses:Food
 account Expenses:Home
 account Expenses:Transportation
 account Expenses:Misc
-account Income:Misc
+
+; Import fallback sentinels - reserved for the categorization loop, never
+; assigned deliberately by any rule (see import.md):
+account Expenses:Unknown
+account Income:Unknown
 
 commodity 1000.00 CZK
 ```
 
 The `commodity` directive both declares the commodity and fixes its display
-style. Declaring accounts up front is what makes `hledger check accounts`
-(used by every write flow in this skill) effective.
+style - including the decimal mark, which every import must match (see the
+decimal-mark invariant in [import.md](import.md)). Declaring accounts up
+front is what makes `hledger check accounts` (used by every write flow in
+this skill) effective.
 
 `main.journal` starts as just:
 
@@ -206,6 +212,11 @@ If the user already has hledger CSV rules files:
 - **Seed, don't fork:** an existing shared payee/categories rules file
   becomes the categories file - keep extending it rather than starting a new
   one.
+- **Check for dual-use fallbacks.** If the legacy rules' catch-all accounts
+  (e.g. `Expenses:Misc`) are also assigned deliberately by payee blocks, the
+  "unknown payee" signal is ambiguous. Propose dedicated sentinels (e.g.
+  `Expenses:Unknown`) as `fallback_accounts` and keep the legacy account as a
+  real category (see import.md, Step 4).
 - **Legacy preprocessing scripts** (encoding fixers, payee normalizers) are
   superseded by `clean-csv.py` plus rules-based normalization. Leave them in
   place untouched, but do not run them; their per-bank knowledge (header

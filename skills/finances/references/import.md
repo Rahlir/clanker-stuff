@@ -13,7 +13,8 @@ raw export (inbox)
   4. categorize  fallback-account loop -> durable rules
   5. import      dry-run -> user confirms -> hledger import into the
                  source's own journal -> validation gate
-  6. reconcile   staged totals vs statement balances (report only)
+  6. reconcile   staged totals vs statement balances (hard gate on a
+                 source's first import; report-only afterwards)
   7. archive     raw file -> archive/YYYY-MM/
 ```
 
@@ -35,11 +36,12 @@ paths resolve against the directory of `LEDGER_FILE`.
 | `staging` | where staging CSVs + rules files live |
 | `archive` | where raw files go after a successful import |
 | `journals` | directory of per-source import journals (`<journals>/<name>.journal`) |
-| `fallback_accounts` | the rules' catch-all accounts that mark a payee as "unknown" |
+| `fallback_accounts` | reserved sentinel accounts (e.g. `Expenses:Unknown`) that mark a payee as "unknown"; no rule may assign them deliberately |
 | `accounts.<name>.match` | regex tried against the raw filename and its first lines/page; routes the file |
 | `accounts.<name>.account` | the journal account this source feeds |
 | `accounts.<name>.format` | `csv`, `pdf-statement` (has balances), or `pdf-listing` (no balances) |
 | `accounts.<name>.encoding` | optional source encoding for `clean-csv.py` |
+| `accounts.<name>.decimal_comma` | optional, `true` when the export uses comma decimals and the journal style is dot-based: stage with `--decimal-comma` (see the decimal-mark invariant in Step 2) |
 
 `<name>` doubles as the staging filename: staging is `<staging>/<name>.csv`,
 rules `<staging>/<name>.csv.rules`, dedup state
@@ -118,9 +120,29 @@ cannot tell from the file which currency it is, ask.
 ```
 
 The script only fixes encoding (auto-detect, or `--encoding` from config),
-line endings, and runs of spaces. Decimal commas are *not* converted - the
-rules file declares `decimal-mark ,` instead. Already-clean exports pass
-through unchanged.
+line endings, and runs of spaces. Already-clean exports pass through
+unchanged.
+
+**Decimal-mark invariant.** `hledger import` copies amounts into the journal
+in the decimal style of the staging CSV, so the decimal mark that reaches the
+journal **must match the journal's `commodity` directives**. A mismatch
+corrupts silently: with `commodity 1000.00 CZK`, an imported `99763,4` is
+re-read as `997634` (the comma becomes a digit-group mark), **every
+`hledger check` gate still passes**, and only reconciliation (step 6)
+catches it. Two valid configurations - never mix them for one source:
+
+- **Dot-style journal, comma-decimal export**: set `decimal_comma = true`
+  for the account and stage with
+  `clean-csv.py ... --decimal-comma --separator ';'` (converts only purely
+  numeric fields; refuses a comma separator). Do **not** declare
+  `decimal-mark ,` in the rules - the staged file now uses dots.
+- **Comma-style journal**: stage numbers as-is and declare `decimal-mark ,`
+  in the rules file.
+
+The canonical PDF staging format below always uses dot decimals (commas are
+the field separator), so with a comma-style journal the same invariant bites
+in reverse on PDF imports - raise it with the user before the first one
+rather than importing dot amounts into a comma journal.
 
 Treat it as a black box - there is no need to read its source. Its full
 contract: the input file is never modified; only the `-o` path is written
@@ -148,6 +170,8 @@ The agent transcribes; deterministic gates make that safe.
      the rules (`date2`) if the rules file maps it.
    - `id` = the statement's transaction/payment ID; it lands in the journal
      as a comment tag (audit trail + exact-match dedup backstop).
+   - `amount` = the booked amount with a **dot** decimal mark (see the
+     decimal-mark invariant above; the sum-gate `awk` also requires dots).
    - Re-join wrapped lines (IDs and payees often break across lines); pick the
      most meaningful payee text for `description`; note original-currency
      amounts and FX rates in the description or drop them - the booked amount
@@ -191,12 +215,26 @@ Errors here mean the rules file no longer fits the export - see
 Unknown payees fall through to the fallback accounts. List them:
 
 ```bash
-hledger -f <staging>/<name>.csv reg expr:'acct:<FALLBACK_1> or acct:<FALLBACK_2>'
+hledger -f <staging>/<name>.csv reg <FALLBACK_1> <FALLBACK_2>
 ```
 
 where `<FALLBACK_n>` are the entries of `fallback_accounts` in
-`finances.toml` - substitute them, do not query literal `Misc` accounts.
-Group by payee, then propose for the
+`finances.toml` - substitute them, do not query literal accounts from this
+example. Space-separated account queries OR together; avoid hand-building
+`expr:'acct:... or ...'` strings here - a malformed variant silently matches
+nothing, which reads as a false "zero unknowns".
+
+**Fallback accounts are reserved sentinels.** No rule - in any rules file -
+may assign a fallback account deliberately; they exist only as the
+landing zone for unmatched records, so that "posts to a fallback account"
+means exactly "unknown payee". If the user wants a genuine miscellaneous
+category, use a separate declared account (e.g. `Expenses:Misc`) distinct
+from the sentinels (e.g. `Expenses:Unknown`). When a rule assigning a
+fallback account turns up anyway (legacy rules, earlier sessions), propose
+moving it to a real category before continuing - otherwise this loop cannot
+tell intentional from unmatched.
+
+Group the unknowns by payee, then propose for the
 whole batch at once: a clean display name + a category account. **Use declared
 accounts only** (`hledger accounts`); a missing account follows the same
 propose-confirm-declare flow as in SKILL.md step 2. The user confirms or
@@ -233,7 +271,8 @@ Notes on these blocks:
   user's explicit say-so.
 
 Re-run the preview until nothing lands in a fallback account, or the user
-explicitly accepts the remainder as Misc.
+explicitly accepts the remainder as unknown (the entries then carry the
+sentinel account into the journal; they can be recategorized later).
 
 ## Step 5 - Import
 
@@ -281,7 +320,13 @@ date forward. If the export cannot be date-limited,
 as seen (imports nothing) - then later exports import only newer
 transactions.
 
-## Step 6 - Reconcile (report, do not block)
+## Step 6 - Reconcile
+
+On a source's **first import this step is a hard gate, not a report**: it is
+the only check that catches silent amount corruption (a decimal-mark
+mismatch passes every `hledger check`). On a first-import mismatch, roll
+back exactly as in step 5, find the cause, and re-import; do not keep the
+batch. On subsequent imports it is report-only.
 
 Compare the journal against the statement's own totals:
 
@@ -302,7 +347,9 @@ false mismatch over the sign.
 - `pdf-listing` exports carry no balances: say so and skip this step.
 
 Report match or mismatch with the amounts. A mismatch usually means missing
-history (a gap), a duplicate, or an unimported sibling export - investigate
+history (a gap), a duplicate, an unimported sibling export, or - especially
+on a first import - corrupted amounts from a decimal-mark mismatch (compare
+a few journal entries against raw export rows to rule it out). Investigate
 with the user; do not "fix" numbers to force agreement.
 
 ## Step 7 - Archive
@@ -361,8 +408,11 @@ Needed once per new source (new bank account, card, or fintech currency).
   column `currency` prepends it to every amount; `balance` generates balance
   assertions. Name pass-through columns `ccy`, `bal_raw`, `amount_raw`, etc.,
   and assign explicitly (`amount1 %amount_raw %ccy`).
-- **Decimal commas:** declare `decimal-mark ,` - do not preprocess numbers.
-  Space thousands separators ("1 000,50") parse fine with it.
+- **Decimal commas:** the journal's commodity style decides - see the
+  decimal-mark invariant in Step 2. `decimal-mark ,` (which also handles
+  space thousands separators like "1 000,50") is only correct when the
+  journal itself uses comma decimals; for a dot-style journal, convert at
+  staging instead.
 - **A `date` field must exist** (or `date %N`), in `date-format` matching the
   export (`%d.%m.%Y`, `%Y-%m-%d %H:%M:%S`, ...).
 - **Skipping records:** `skip` inside an `if` block drops matching records

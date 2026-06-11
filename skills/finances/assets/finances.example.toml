@@ -54,9 +54,12 @@ archive = "import/archive"    # raws move to <archive>/YYYY-MM/ after import
 # (each included from the main journal), never to the main journal itself -
 # `hledger check ordereddates` is per-file, and statement periods overlap.
 journals = "journal"
-# Accounts that per-account rules use as catch-alls; transactions landing here
-# are treated as "unknown payee" during the categorization loop.
-fallback_accounts = ["Expenses:Misc", "Income:Misc"]
+# Reserved sentinel accounts that per-account rules use as catch-alls;
+# transactions landing here are treated as "unknown payee" during the
+# categorization loop. No rule may assign these deliberately - a genuine
+# miscellaneous category must be a different account (e.g. Expenses:Misc),
+# or "lands in a fallback account" stops meaning "unknown".
+fallback_accounts = ["Expenses:Unknown", "Income:Unknown"]
 
 # One entry per statement source. The table key is the staging name:
 # staging file <staging>/<name>.csv, rules <staging>/<name>.csv.rules.
@@ -66,6 +69,9 @@ match = "12-3456789"            # regex tried against filename + file head
 account = "Assets:Checking"
 format = "csv"
 encoding = "windows-1250"       # only if clean-csv.py auto-detect needs help
+decimal_comma = true            # export uses comma decimals but the journal
+                                # style is dot-based: stage with
+                                # clean-csv.py --decimal-comma (import.md)
 
 [import.accounts.card]
 match = "VÝPIS Z ÚČTU KE KREDITNÍ KARTĚ"
