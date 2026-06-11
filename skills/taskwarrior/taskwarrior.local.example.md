@@ -1,8 +1,11 @@
 # Taskwarrior Local Configuration (template)
 
-Copy this file to `taskwarrior.local.md` (same directory) and fill it in.
-`SKILL.md` reads `taskwarrior.local.md` every session to learn things about
+Copy this file to `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/taskwarrior.local.md`
+and fill it in. `SKILL.md` reads that file every session to learn things about
 how you use Taskwarrior that it cannot discover by running `task` itself.
+
+This file stays in the skill's package directory as a template only; your
+filled-in copy lives in the config directory so `pi update` never overwrites it.
 
 This file is for **meaning, intent, and personal conventions** only. Do not
 hardcode anything the agent can query (project names, context filters, UDA
@@ -11,8 +14,6 @@ for the full discoverable-vs-not breakdown.
 
 Delete any section below that has nothing non-obvious to record. Keep this
 file short; the agent reads it on every turn.
-
-`taskwarrior.local.md` is gitignored.
 
 ---
 

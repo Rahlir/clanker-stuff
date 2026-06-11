@@ -49,16 +49,21 @@ file holds **only what the agent cannot discover by running `task`**:
 meaning, intent, and personal conventions.
 
 ```
+~/.config/pi-clanker/
+└── taskwarrior.local.md            <- your conventions (create from template)
+
 skills/taskwarrior/
 ├── README.md
 ├── SKILL.md
-├── taskwarrior.local.md            <- your conventions (gitignored)
 ├── taskwarrior.local.example.md    <- template, copy and edit
 └── references/
     ├── commands.md
     ├── advanced.md
     └── assistant_patterns.md
 ```
+
+The local config lives in `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/`
+so it survives `pi update` without manual intervention.
 
 ### What belongs in `taskwarrior.local.md` vs not
 
@@ -88,11 +93,13 @@ project or tweak a context filter.
 
 ### Setup
 
-1. Copy the template, in the skill directory of each deployment (e.g.
-   `~/.agents/skills/taskwarrior` on user machines, the deployed seed
-   dir `<dataDir>/sandbox/shared/skills/taskwarrior` for the sandbox):
+1. Find the template bundled with the skill and copy it to the config
+   directory:
    ```bash
-   cp taskwarrior.local.example.md taskwarrior.local.md
+   mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker"
+   # Locate the skill (adjust path if installed elsewhere)
+   cp ~/.pi/agent/git/github.com/Rahlir/clanker-stuff/skills/taskwarrior/taskwarrior.local.example.md \
+      "${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/taskwarrior.local.md"
    ```
 2. Fill in the sections that apply, following the discoverable-vs-not
    table above. Delete sections you have nothing non-obvious to record
@@ -100,9 +107,8 @@ project or tweak a context filter.
 3. The agent will read it automatically the next time you invoke the
    skill.
 
-Keep `taskwarrior.local.md` only in deployed skill directories (it is
-gitignored), never in a shareable repo such as fluke-chat, so private
-project and client names never get committed.
+The file lives outside the package directory, so it is never overwritten
+by `pi update` and never committed to any repo.
 
 The skill works without `taskwarrior.local.md`. The agent will still
 discover your projects, tags, contexts, and UDAs live, but it will have
@@ -140,8 +146,9 @@ like "critical" each session.
 
 - `SKILL.md` ‑ generic, agent-facing instructions, safety rules, and
   Quick Reference.
-- `taskwarrior.local.md` ‑ your personal conventions (gitignored).
-- `taskwarrior.local.example.md` ‑ template for the local config.
+- `taskwarrior.local.example.md` ‑ template for the local config; your
+  filled-in copy lives at
+  `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/taskwarrior.local.md`.
 - `references/commands.md` ‑ everyday CLI reference: filter grammar, reads,
   writes, JSON+jq pipelines, common pitfalls, exit codes.
 - `references/advanced.md` ‑ rare features loaded only when triggered:

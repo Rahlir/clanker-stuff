@@ -35,7 +35,7 @@ Project: https://taskwarrior.org
 
 ## Local Configuration
 
-Before answering any question, read the file `taskwarrior.local.md` from this skill's directory (the directory containing this `SKILL.md`). It captures **only what cannot be discovered by running `task`**:
+Before answering any question, read `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/taskwarrior.local.md`. It captures **only what cannot be discovered by running `task`**:
 
 - What each project, tag, and context **means** in the user's life
 - The **purpose** and value semantics of any custom UDAs
@@ -58,9 +58,9 @@ task show alias.                # aliases
 ls "$(task _get rc.hooks.location)" 2>/dev/null   # active hooks
 ```
 
-If `taskwarrior.local.md` does not exist:
+If `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/taskwarrior.local.md` does not exist:
 
-1. Tell the user the local config is missing and point at `taskwarrior.local.example.md` as a template.
+1. Tell the user the local config is missing. Point at `taskwarrior.local.example.md` in this skill's directory as a template to copy to `~/.config/pi-clanker/taskwarrior.local.md` (or `$XDG_CONFIG_HOME/pi-clanker/taskwarrior.local.md`).
 2. Discover live state with the helpers above so you can still answer the current question.
 3. When the answer depends on subjective meaning ("what's critical", "what's a work task"), state the assumption you are making and ask the user to confirm. Suggest they record the answer in `taskwarrior.local.md` for next time.
 
