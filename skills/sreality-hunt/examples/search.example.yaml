@@ -1,0 +1,150 @@
+# Example saved search for sreality-hunt.
+#
+# Copy this file to ~/.config/sreality-hunt/searches/<your-name>.yaml and
+# tweak. Filename (without .yaml) becomes the search name passed to all CLI
+# commands.
+#
+# Three blocks:
+#   filters          - hard filters, pushed to the sreality API
+#   must_haves       - per-listing checks done after fetch; classify into
+#                      tiers: match / near-miss(failed checks) / fail
+#   preferences      - free-form prose, used as LLM input when evaluating
+#   learned_preferences - managed by `sreality-hunt distill`, leave alone
+
+# Optional. Defaults to the filename if omitted.
+name: family-house
+
+# Optional one-liner shown in `search list`.
+description: 3+kk and up, central Praha, ideally cihla, no panelák
+
+# ============================================================
+# HARD FILTERS  (sent to the API as query params)
+# ============================================================
+filters:
+  # One or more of: apt, house.
+  # Multiple values trigger one API query per category and union the results.
+  category:
+    - apt
+    - house
+
+  # sale | rent | auction. Default: sale.
+  transaction: sale
+
+  # Apartment dispositions (only used when 'apt' in category).
+  # One or more of: 1+kk, 1+1, 2+kk, 2+1, 3+kk, 3+1, 4+kk, 4+1, 5+kk, 5+1, 6+, atypical
+  # Empty / omitted = all dispositions.
+  apt_dispositions:
+    - 3+kk
+    - 3+1
+    - 4+kk
+
+  # House types (only used when 'house' in category).
+  # One or more of: family, villa, cottage, chalet, agricultural,
+  #                 multigenerational, heritage
+  # Empty / omitted = all types.
+  house_types:
+    - family
+    - villa
+    - multigenerational
+
+  # Location. Both region_ids and district_ids accepted; district_ids are
+  # finer. If both given, district_ids win (region acts as a sanity bound).
+  # Sreality IDs - see docs/sreality-api-findings.md or the sreality.cz UI
+  # for the codes you care about.
+  location:
+    region_ids: [10]                        # 10 = Praha
+    district_ids: [5001, 5002, 5003, 5007]  # Praha 1, 2, 3, 7
+
+  # CZK. Use 0 for "no limit".
+  price_min: 0
+  price_max: 14000000
+
+  # m². Use 0 for "no limit".
+  area_min: 70
+  area_max: 0
+
+  # Optional. Per-digest hard cap on listings the CLI will fetch in detail.
+  # Defaults to 200 (global default). Lower for cheaper / faster digests.
+  max_listings: 200
+
+# ============================================================
+# MUST-HAVE CHECKS  (evaluated after fetching each listing)
+# ============================================================
+# Each entry is { check, value, severity }.
+#
+# severity: hard | soft (default: soft)
+#   hard - failing puts the listing in tier=fail (collapsed to count in
+#          digest). Use sparingly; hard filters above already do most of this.
+#   soft - failing puts the listing in tier=near-miss with the failed checks
+#          surfaced. The agent decides how much each miss matters.
+#
+# Available checks:
+#   balcony            value: true|false
+#   terrace            value: true|false
+#   loggia             value: true|false
+#   cellar             value: true|false
+#   garage             value: true|false
+#   parking            value: true|false       (parking_lots > 0)
+#   elevator           value: true|false
+#   furnished          value: true|partial|false|any
+#   low_energy         value: true|false
+#   easy_access        value: true|false       (barrier-free)
+#   ownership          value: osobni|druzstevni|statni|jine
+#   building_type      value: [cihla, smisena, ...]      (any-of)
+#   building_type_not  value: [panel, ...]               (none-of)
+#   building_condition value: [novostavba, po_rekonstrukci, velmi_dobry, ...]
+#   floor_min          value: <int>
+#   floor_max          value: <int>
+#   not_ground_floor   value: true                       (sugar for floor_min: 1)
+#   energy_class_max   value: A|B|C|D|E|F|G              (rating not worse than)
+#   images_min         value: <int>                      (filters shell listings)
+#   description_min    value: <int chars>                (filters one-liner listings)
+must_haves:
+  - { check: ownership,         value: osobni,        severity: hard }
+  - { check: building_type_not, value: [panel],       severity: soft }
+  - { check: not_ground_floor,  value: true,          severity: soft }
+  - { check: floor_max,         value: 7,             severity: soft }
+  - { check: elevator,          value: true,          severity: soft }
+  - { check: balcony,           value: true,          severity: soft }
+  - { check: cellar,            value: true,          severity: soft }
+  - { check: images_min,        value: 5,             severity: soft }
+  - { check: description_min,   value: 200,           severity: soft }
+  - { check: energy_class_max,  value: D,             severity: soft }
+
+# ============================================================
+# QUALITATIVE PREFERENCES  (free-form, fed to the LLM)
+# ============================================================
+# This is what the LLM evaluator reads alongside the deterministic facts.
+# Be specific about likes and dislikes; the more concrete, the better the
+# scoring. Use Markdown if you want.
+preferences: |
+  ## Use case
+  Primary residence for a family of 4 (two adults, two kids ages 5 and 7).
+  Planning to stay 10+ years. Renovation OK if priced accordingly.
+
+  ## Strong preferences
+  - Quiet street, not on a magistrála (Veletržní, Strossmayerovo nám., Argentinská, Vrchlického, etc. = no)
+  - Good natural light; high floors preferred
+  - Walking distance (<10 min) to a real park: Stromovka, Letenské sady, Riegrovy sady, Havlíčkovy sady, Vyšehrad
+  - Walking distance (<7 min) to tram or metro
+  - Reachable from Hradčanská tram stop in <25 min
+
+  ## Nice to have
+  - Original parquet floors, period details (prvorepublikový cihlový dům)
+  - Cellar (sklep) and a parking spot or garage (street parking in P7/P1 is brutal)
+  - South or west exposure for the living room
+
+  ## Strong dislikes
+  - Panelák construction (sídliště feel)
+  - Ground floor or 1st floor (street noise + privacy)
+  - "Investiční potenciál" / "ideální pro pronájem" framing in the listing - usually means tenant in place
+  - Listings emphasizing "k rekonstrukci" unless the price is well below market for the area
+  - Generic agency boilerplate descriptions with no concrete detail
+
+# ============================================================
+# LEARNED PREFERENCES  (managed by `sreality-hunt distill`)
+# ============================================================
+# This block is overwritten when you run `sreality-hunt distill <name>`.
+# It's appended to the prompt alongside `preferences`.
+# Leave it as an empty string until you've marked enough listings.
+learned_preferences: ""
