@@ -16,15 +16,16 @@ serialization.py.
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 import httpx
 
 from . import codebooks
-from .models import ListingDetail, ListingSummary, ListResponse, SavedSearch
+from .models import ListingDetail, ListingSummary, ListResponse, Locality, SavedSearch
 
 # Module-level logger; the CLI configures handlers.
 log = logging.getLogger("sreality_hunt.api")
@@ -34,10 +35,19 @@ log = logging.getLogger("sreality_hunt.api")
 # Constants
 # ============================================================================
 
-API_BASE = "https://www.sreality.cz/api/cs/v2"
+API_BASE = "https://www.sreality.cz/api/v1"
 PUBLIC_BASE = "https://www.sreality.cz/detail"
 
-DEFAULT_USER_AGENT = "sreality-hunt/0.1 (+https://github.com/personal-use)"
+# sreality's v1 API is fronted by Envoy and rejects some non-browser clients;
+# a realistic desktop UA is the safe default.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+)
+
+# Only the detail endpoint (`/estates/<numeric-id>`) maps a 404/410 to
+# "listing gone". The search endpoint (`/estates/search`) must not.
+_DETAIL_PATH_RE = re.compile(r"^/estates/\d+$")
 
 # Polite defaults; can be overridden per client instance.
 DEFAULT_RATE_LIMIT_RPS = 1.0
@@ -134,17 +144,26 @@ class SrealityClient:
 
     def list_estates(self, params: dict[str, str | int]) -> ListResponse:
         """One page of listing summaries. Caller drives pagination."""
-        payload = self._get_json("/estates", params=params)
+        payload = self._get_json("/estates/search", params=params)
         return ListResponse.parse_api(payload)
 
     def get_detail(self, hash_id: int) -> ListingDetail:
         """Full detail payload for one listing. Raises `ListingNotFound` on 404."""
-        payload = self._get_json(f"/estates/{hash_id}", params={})
-        return ListingDetail.model_validate(payload)
+        return ListingDetail.model_validate(self.get_detail_raw(hash_id))
 
     def get_detail_raw(self, hash_id: int) -> dict[str, Any]:
-        """Same as `get_detail` but returns the raw dict (used by slim_detail)."""
-        return self._get_json(f"/estates/{hash_id}", params={})
+        """Return the unwrapped `result` object (used by slim_detail).
+
+        The v1 detail endpoint wraps the listing in `{result, status_code,
+        status_message}`; callers only ever want `result`.
+        """
+        payload = self._get_json(f"/estates/{hash_id}", params={})
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise SrealityError(
+                f"detail response for {hash_id} missing `result` object"
+            )
+        return result
 
     def iter_search(
         self,
@@ -155,25 +174,26 @@ class SrealityClient:
     ) -> Iterator[ListingSummary]:
         """Walk pages of `list_estates`, yielding up to `max_listings`.
 
-        Caller-supplied params are merged with pagination; the caller should
-        not set `page` or `per_page` themselves.
+        Caller-supplied params are merged with `limit`/`offset` pagination;
+        the caller should not set those themselves.
         """
-        page = 1
+        offset = 0
         emitted = 0
         while emitted < max_listings:
-            q = {**params, "page": page, "per_page": min(page_size, max_listings - emitted)}
+            limit = min(page_size, max_listings - emitted)
+            q = {**params, "limit": limit, "offset": offset}
             resp = self.list_estates(q)
-            if not resp.estates:
+            if not resp.results:
                 return
-            for est in resp.estates:
+            for est in resp.results:
                 yield est
                 emitted += 1
                 if emitted >= max_listings:
                     return
+            offset += len(resp.results)
             # Stop if we've walked the whole result set.
-            if page * resp.per_page >= resp.result_size:
+            if offset >= resp.total:
                 return
-            page += 1
 
     # --- Internals ---------------------------------------------------------
 
@@ -205,7 +225,7 @@ class SrealityClient:
             # 404 = never existed; 410 = removed since first seen. Both mean
             # "detail is unfetchable"; the caller (digest, evaluate) should
             # skip or mark the snapshot inactive rather than abort.
-            if r.status_code in (404, 410) and path.startswith("/estates/"):
+            if r.status_code in (404, 410) and _DETAIL_PATH_RE.match(path):
                 raise ListingNotFound(
                     f"sreality returned {r.status_code} for {path}"
                 )
@@ -278,6 +298,26 @@ def _retry_after(r: httpx.Response) -> float | None:
 # ============================================================================
 
 
+def build_locality_slug(loc: Locality) -> str:
+    """Build the locality slug segment of a public detail URL.
+
+    The v1 API has no single pre-built locality slug (the v2 `seo.locality`
+    is gone), so we assemble one from the locality's seo components. The
+    exact value barely matters: sreality.cz 301-redirects any slug to the
+    canonical URL for the hash_id, so this only needs to be non-empty and
+    reasonable. Falls back to "x" when no component is available.
+    """
+    # Prefer citypart over quarter: for Prague the quarter_seo_name repeats the
+    # city ("praha-zbraslav"), while citypart ("zbraslav") yields the canonical
+    # "praha-zbraslav-lesaku" slug.
+    area = loc.citypart_seo_name or loc.quarter_seo_name
+    parts: list[str] = []
+    for seg in (loc.city_seo_name, area, loc.street_seo_name or loc.ward_seo_name):
+        if seg and seg not in parts:
+            parts.append(seg)
+    return "-".join(parts) if parts else "x"
+
+
 def build_listing_url(
     *,
     category_type_cb: int,
@@ -288,10 +328,9 @@ def build_listing_url(
 ) -> str:
     """Construct the public detail URL.
 
-    Pattern verified against live sreality.cz; all four slugs are required or
-    we get a 404 (see docs/sreality-api-findings.md). Unknown category codes
-    degrade to a numeric slug - the page may 404 but the URL is at least
-    constructible and the failure mode is visible.
+    Pattern: /detail/<type>/<main>/<sub>/<locality-slug>/<hash_id>. sreality.cz
+    301-redirects a wrong locality slug to canonical, so the slug only needs to
+    be plausible. Unknown category codes degrade to a numeric slug.
     """
     type_slug = codebooks.slug_or_numeric(
         codebooks.CATEGORY_TYPE, category_type_cb, "category_type_cb",
@@ -334,20 +373,25 @@ def build_search_params(search: SavedSearch) -> list[dict[str, str | int]]:
         "category_type_cb": codebooks.CATEGORY_TYPE_BY_NAME[filters.transaction],
     }
 
+    # Newest-first so a capped digest walks the most recent listings. The v1
+    # API supports this; v2 never did (we used to rely solely on DB dedup).
+    common["sort"] = "-date"
+
     if filters.location.district_ids:
-        common["locality_district_id"] = _pipe_join(filters.location.district_ids)
+        common["locality_district_id"] = _comma_join(filters.location.district_ids)
     if filters.location.region_ids:
-        common["locality_region_id"] = _pipe_join(filters.location.region_ids)
+        common["locality_region_id"] = _comma_join(filters.location.region_ids)
 
-    if filters.price_min or filters.price_max:
-        lo = filters.price_min
-        hi = filters.price_max or 999_999_999
-        common["czk_price_summary_order2"] = f"{lo}|{hi}"
+    # v1 uses `<field>_from` / `<field>_to` for ranges (pipe ranges are gone).
+    if filters.price_min:
+        common["price_from"] = filters.price_min
+    if filters.price_max:
+        common["price_to"] = filters.price_max
 
-    if filters.area_min or filters.area_max:
-        lo = filters.area_min
-        hi = filters.area_max or 9999
-        common["usable_area"] = f"{lo}|{hi}"
+    if filters.area_min:
+        common["usable_area_from"] = filters.area_min
+    if filters.area_max:
+        common["usable_area_to"] = filters.area_max
 
     # Push hard must-haves to the API where possible (cheap pre-filter).
     common.update(_hard_must_haves_to_params(search))
@@ -357,11 +401,11 @@ def build_search_params(search: SavedSearch) -> list[dict[str, str | int]]:
         q = dict(common)
         q["category_main_cb"] = codebooks.CATEGORY_MAIN_BY_NAME[cat_name]
         if cat_name == "apt" and filters.apt_dispositions:
-            q["category_sub_cb"] = _pipe_join(
+            q["category_sub_cb"] = _comma_join(
                 codebooks.APT_DISPOSITION_BY_NAME[d] for d in filters.apt_dispositions
             )
         elif cat_name == "house" and filters.house_types:
-            q["category_sub_cb"] = _pipe_join(
+            q["category_sub_cb"] = _comma_join(
                 codebooks.HOUSE_TYPE_BY_NAME[t] for t in filters.house_types
             )
         queries.append(q)
@@ -370,14 +414,15 @@ def build_search_params(search: SavedSearch) -> list[dict[str, str | int]]:
 
 # Subset of must-have checks the API has a native filter for. Soft variants
 # of the same checks are not pushed (we still want near-miss listings to be
-# fetched and surfaced).
+# fetched and surfaced). v1 param names drop the `_cb` suffix these had in v2.
 _HARD_MUST_HAVE_API_KEYS: dict[str, str] = {
     "balcony":  "balcony",
     "terrace":  "terrace",
     "loggia":   "loggia",
     "cellar":   "cellar",
     "garage":   "garage",
-    "elevator": "elevator_cb",
+    "parking":  "parking_lots",
+    "elevator": "elevator",
 }
 
 
@@ -389,19 +434,21 @@ def _hard_must_haves_to_params(search: SavedSearch) -> dict[str, str | int]:
         if mh.check in _HARD_MUST_HAVE_API_KEYS and mh.value is True:
             out[_HARD_MUST_HAVE_API_KEYS[mh.check]] = 1
         elif mh.check == "ownership" and isinstance(mh.value, str):
-            out["ownership_cb"] = codebooks.OWNERSHIP_BY_NAME[mh.value]
-        elif mh.check == "energy_class_max" and isinstance(mh.value, str):
-            # API filter is exact match per class; "max" semantics is enforced
-            # post-fetch. Skip pushing to API.
-            continue
-        # building_type, building_type_not, building_condition, floor_*,
-        # images_min, description_min: no clean 1:1 API filter we trust;
-        # let facts.py handle them post-fetch.
+            # osobni=1 / druzstevni=2 verified for v1; statni/jine are
+            # best-effort and re-checked post-fetch regardless.
+            out["ownership"] = codebooks.OWNERSHIP_BY_NAME[mh.value]
+        # building_type(_not), building_condition, energy_class_max, floor_*,
+        # images_min, description_min: no clean 1:1 API filter we trust
+        # (codes diverged / "max" semantics); let facts.py handle post-fetch.
     return out
 
 
-def _pipe_join(values: Any) -> str:
-    return "|".join(str(v) for v in values)
+def _comma_join(values: Iterable[Any]) -> str:
+    """v1 multi-value encoding (e.g. `locality_district_id=5005,5006`).
+
+    v2 used pipe-joining; v1 rejects that (HTTP 422/500).
+    """
+    return ",".join(str(v) for v in values)
 
 
 # ============================================================================
@@ -409,89 +456,78 @@ def _pipe_join(values: Any) -> str:
 # ============================================================================
 
 
-# Top-level keys we keep when persisting a snapshot. Everything else is
-# either redundant, heavy (POIs, seller, similar adverts), or session-specific
-# (Retry-After style metadata).
-_KEEP_TOP_LEVEL: frozenset[str] = frozenset({
-    "name", "text", "price_czk", "items", "recommendations_data",
-    "locality", "map", "codeItems", "seo", "meta_description",
-    "is_topped", "is_topped_today",
+# Fields of the flat `result` object we keep when persisting a snapshot.
+# Everything else (premise, rus, user, videos, panorama_data,
+# advert_images_all, POI distances, ...) is heavy or unused. This set must
+# stay a superset of what `ListingDetail` reads so a stored snapshot re-parses.
+_KEEP_DETAIL_FIELDS: frozenset[str] = frozenset({
+    "hash_id", "advert_name", "advert_description",
+    "category_main_cb", "category_sub_cb", "category_type_cb",
+    "usable_area", "floor_number", "floors", "underground_floors",
+    "ownership", "building_type", "building_condition",
+    "energy_efficiency_rating_cb", "furnished", "elevator", "easy_access",
+    "balcony", "terrace", "loggia", "cellar", "garage", "low_energy",
+    "basin", "parking",
+    "price_czk", "price_summary_czk", "price_czk_m2",
+    "locality", "edited", "since", "exclusively_at_rk",
+    # advert_images is kept but re-slimmed below (the verbatim copy from the
+    # comprehension is overwritten with a trimmed per-image dict).
+    "advert_images",
 })
+
+# Enforce the "superset of what ListingDetail reads" invariant at import time:
+# a new ListingDetail field that isn't kept here would silently break snapshot
+# round-trips (the stored slim JSON wouldn't re-parse).
+_missing_keep = set(ListingDetail.model_fields) - _KEEP_DETAIL_FIELDS
+assert not _missing_keep, (
+    f"_KEEP_DETAIL_FIELDS is missing ListingDetail fields: {_missing_keep}"
+)
 
 
 def slim_detail(raw: dict[str, Any]) -> dict[str, Any]:
-    """Strip heavy/optional sections from a detail response for storage.
+    """Strip heavy/optional fields from a detail `result` dict for storage.
 
-    Keeps everything needed to:
-      * re-render an evaluation card without re-fetching
-      * recompute facts and snapshot_hash
-      * extract images for the chat UI
-
-    Drops: poi*, _embedded.seller, _embedded.calculator, _embedded.favourite,
-    _embedded.note, _embedded.matterport_url, _links.
+    `raw` is the unwrapped `result` object (as returned by
+    `SrealityClient.get_detail_raw`). Keeps everything needed to re-render an
+    evaluation card, recompute facts/snapshot_hash, and show images, without
+    the bulky agency/POI/video/panorama payloads.
 
     Returns a new dict; does not mutate the input.
     """
-    out: dict[str, Any] = {k: v for k, v in raw.items() if k in _KEEP_TOP_LEVEL}
+    out: dict[str, Any] = {k: v for k, v in raw.items() if k in _KEEP_DETAIL_FIELDS}
 
-    # _embedded is large mainly because of the seller block; we only need
-    # the slimmed image list.
-    emb = raw.get("_embedded") or {}
+    # advert_images carries width/height/id/alt we don't need; keep just the
+    # fields the AdvertImage model reads.
     slim_images: list[dict[str, Any]] = []
-    for img in emb.get("images") or []:
-        links = img.get("_links") or {}
+    for img in raw.get("advert_images") or []:
         slim_images.append({
-            "id": img.get("id"),
-            "order": img.get("order"),
+            "url": img.get("url"),
             "kind": img.get("kind"),
-            "view": (links.get("view") or {}).get("href"),
-            "full": (links.get("self") or {}).get("href"),
+            "order": img.get("order"),
         })
-    out["_embedded"] = {"images": slim_images}
+    out["advert_images"] = slim_images
 
     return out
 
 
-# Fields that participate in change detection. A change in any of these
-# triggers a new snapshot row; everything else (POIs, paid promo flags,
-# seller info) is considered cosmetic for this purpose.
-_HASH_FIELDS = (
-    "price",
-    "area",
-    "title",
-    "locality",
-    "description",
-    "items_signature",
-    "building_condition",
-    "ownership",
-)
-
-
 def snapshot_hash(detail: ListingDetail) -> str:
-    """Stable sha256 of normalized fields used to detect material changes."""
-    rd = detail.recommendations_data
+    """Stable sha256 of normalized fields used to detect material changes.
+
+    Cosmetic churn (POIs, promo flags, agency info, the daily `edited` date)
+    is excluded so only material changes mint a new snapshot row.
+    """
     norm = {
-        "price": detail.price_czk.value_raw,
-        "area": rd.usable_area,
-        "title": detail.name.value,
-        "locality": detail.locality.value,
-        "description": detail.text.value,
-        # items[] is Czech-labeled and ordered; serialize a stable signature
-        # of (name, value) pairs, skipping volatile entries like "Aktualizace".
-        "items_signature": [
-            (it.get("name"), _normalize_item_value(it.get("value")))
-            for it in detail.items
-            if it.get("type") != "edited"  # "Aktualizace: Dnes" changes daily
-        ],
-        "building_condition": rd.building_condition,
-        "ownership": rd.ownership,
+        "price": detail.price_czk,
+        "area": detail.usable_area,
+        "title": detail.advert_name,
+        "locality": detail.locality.display(),
+        "description": detail.advert_description,
+        "floor": detail.floor_number,
+        "floors": detail.floors,
+        "building_condition": (
+            detail.building_condition.name if detail.building_condition else None
+        ),
+        "ownership": detail.ownership.name if detail.ownership else None,
     }
     payload = json.dumps(norm, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _normalize_item_value(v: Any) -> Any:
-    """Items contain lists, dicts, strings, bools. Make them comparable."""
-    if isinstance(v, list):
-        return sorted(json.dumps(x, sort_keys=True, ensure_ascii=False) for x in v)
-    return v

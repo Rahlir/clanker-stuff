@@ -381,7 +381,10 @@ def _build_change_flag(old_price: int | None, new_price: int) -> str:
     if old_hidden and not new_hidden:
         return "price-revealed"
     if old_hidden and new_hidden:
-        return None  # both hidden, no meaningful delta
+        # Unreachable in practice: the caller only invokes this after
+        # `_is_material_price_change`, which returns False for both-hidden.
+        # Kept total so the return type stays `str`.
+        return "price-changed"
     # Both prices visible.
     delta_pct = (new_price - old_price) / old_price * 100
     direction = "drop" if delta_pct < 0 else "up"

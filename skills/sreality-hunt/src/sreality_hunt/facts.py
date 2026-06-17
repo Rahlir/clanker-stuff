@@ -17,115 +17,84 @@ Three layers, in order of dependency:
      Aggregates the per-check results into a single tier
      ('match' | 'near-miss' | 'fail'). Drives digest bucketing.
 
-Two semantic decisions worth knowing about:
-
-  * Tri-state amenity ints (0=no info, 1=yes, 2=uncertain) are collapsed
-    to bool via `_is_yes(v) = v >= 1`. "Uncertain" counts as "present"
-    because in practice it means the listing acknowledged the feature.
+One semantic decision worth knowing about:
 
   * Missing data fails *presence* checks (`balcony: true`) but passes
     *exclusion* checks (`building_type_not: [panel]`). The reasoning: if
     a listing didn't say it has a balcony, it probably doesn't have one
     worth mentioning; but if a listing didn't say it's panel, you can't
     conclude it is.
+
+The v1 detail endpoint gives amenities as real bools, floors as plain ints,
+and codebook fields as {name, value}; this module reads them directly (no
+more Czech-string parsing or tri-state collapsing).
 """
 
 import logging
-import re
 from collections.abc import Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from . import codebooks
-from .api import build_listing_url
-from .models import ListingDetail, ListingSummary, MustHave
+from .api import build_listing_url, build_locality_slug
+from .models import AdvertImage, CodeItem, ListingDetail, ListingSummary, MustHave
 
 log = logging.getLogger("sreality_hunt.facts")
 
 # ============================================================================
-# Tri-state interpretation
+# Floor display
 # ============================================================================
 
 
-def _is_yes(v: int) -> bool:
-    """Collapse a tri-state amenity int (0=no info, 1=yes, 2=uncertain) to bool."""
-    return v >= 1
+def floor_display(floor_n: int | None, total_floors: int | None) -> str | None:
+    """Czech-style floor label from the v1 numeric fields, for the facts table.
 
-
-# ============================================================================
-# Floor parsing
-# ============================================================================
-#
-# The Czech `items[] -> Podlaží` field has many formats:
-#   "3. podlaží z celkem 5"        -> (3, 5)
-#   "1. podlaží"                   -> (1, None)
-#   "Přízemí" / "Přízemí (...)"    -> (0, None)
-#   "Suterén"                      -> (-1, None)
-#   "Mezonet"                      -> (None, None)  - can't reduce to a single floor
-#
-# `parse_floor` is exported so the renderer can format the original Czech
-# string but consumers needing a numeric comparison go through us.
-
-
-# The trailing dot after the number and the whitespace between the number and
-# the unit are both optional - real listings have all of "3. NP", "3 NP",
-# "3NP", "3.podlaží".
-_FLOOR_RE = re.compile(
-    r"(\d+)\.?\s*(?:podlaží|np|patro)"
-    r"(?:\s*z\s*celkem\s*(\d+))?",
-    re.IGNORECASE,
-)
-
-
-def parse_floor(value: str | None) -> tuple[int | None, int | None]:
-    if not value:
-        return None, None
-    s = value.lower().strip()
-    if "přízem" in s or "prizem" in s:
-        return 0, None
-    if "suter" in s:  # "Suterén"
-        return -1, None
-    m = _FLOOR_RE.search(s)
-    if m:
-        return int(m.group(1)), (int(m.group(2)) if m.group(2) else None)
-    return None, None
-
-
-# ============================================================================
-# Item lookup
-# ============================================================================
-
-
-def _find_item(items: list[dict[str, Any]], name: str) -> Any:
-    """Return `value` of the first items[] entry with matching `name`."""
-    for it in items:
-        if it.get("name") == name:
-            return it.get("value")
-    return None
-
-
-def _extract_image_urls(embedded: dict[str, Any]) -> list[str]:
-    """Extract preview-size image URLs from a detail's `_embedded.images`.
-
-    Handles both the raw API form (`img._links.view.href`) and the
-    `api.slim_detail` form (`img.view`). The slim form is what the
-    snapshots table stores; the raw form is what `SrealityClient.get_detail`
-    returns. Listings without a usable URL are silently skipped.
+    0 -> "Přízemí", negative -> "Suterén", else "N. podlaží[ z celkem M]".
+    Returns None when the floor is unknown (so the renderer omits the row).
     """
+    if floor_n is None:
+        return None
+    if floor_n == 0:
+        base = "Přízemí"
+    elif floor_n < 0:
+        base = "Suterén"
+    else:
+        base = f"{floor_n}. podlaží"
+    return f"{base} z celkem {total_floors}" if total_floors else base
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+
+def _yes(item: CodeItem | None) -> bool:
+    """True when a tri-state {name, value} field is explicitly "Ano" (value 1).
+
+    Used for `elevator` / `easy_access`, which v1 sends as {name, value}
+    (0=nezadáno, 1=Ano, 2=Ne) rather than bools.
+    """
+    return item is not None and item.value == 1
+
+
+def _enum_name(item: CodeItem | None, table: dict[str, str]) -> str | None:
+    """Map a {name, value} enum to its friendly identifier via a Czech-name
+    table. The 0/placeholder option's name isn't in the table, so it maps to
+    None naturally."""
+    if item is None:
+        return None
+    return table.get(item.name)
+
+
+def _image_urls(images: list[AdvertImage]) -> list[str]:
+    """Upgrade protocol-relative advert image URLs to https. Skips blanks."""
     urls: list[str] = []
-    for img in embedded.get("images") or []:
-        # Slim form (post-`slim_detail`)
-        view = img.get("view")
-        if isinstance(view, str) and view:
-            urls.append(view)
+    for img in images:
+        url = img.url
+        if not url:
             continue
-        # Raw form
-        links = img.get("_links") or {}
-        raw_view = links.get("view") or {}
-        href = raw_view.get("href") if isinstance(raw_view, dict) else None
-        if isinstance(href, str) and href:
-            urls.append(href)
+        urls.append(f"https:{url}" if url.startswith("//") else url)
     return urls
 
 
@@ -216,8 +185,8 @@ class Facts(BaseModel):
     image_urls: list[str] = []  # preview-size (~749x562); see _extract_image_urls
     description: str
     description_length: int
-    aktualizace: str | None     # "Dnes" / "3 dny" / "8.4.2025"
-    labels: list[str] = []      # from list-endpoint summary; empty otherwise
+    aktualizace: str | None     # v1 `edited` ISO date, e.g. "2026-06-12"
+    labels: list[str] = []      # always empty (v1 search summary has no labels)
 
     # --- Locality (for comparable pricing later) ---
     locality_region_id: int | None
@@ -228,55 +197,63 @@ def extract_facts(
     detail: ListingDetail,
     summary: ListingSummary | None = None,
 ) -> Facts:
-    rd = detail.recommendations_data
+    # `summary` is currently unused (the v1 search summary carries no fields
+    # the detail lacks); kept in the signature for call-site compatibility.
+    _ = summary
 
-    floor_display = _find_item(detail.items, "Podlaží")
-    floor_n, total_floors = parse_floor(floor_display)
+    main_cb = detail.category_main_cb.value
+    sub_cb = detail.category_sub_cb.value
+    type_cb = detail.category_type_cb.value
 
-    price = detail.price_czk.value_raw
+    floor_n = detail.floor_number
+    total_floors = detail.floors
+
+    price = detail.price_czk
     price_hidden = price < PRICE_HIDDEN_THRESHOLD
-    area = rd.usable_area
-    price_per_m2 = None if (price_hidden or not area) else price // area
+    area = detail.usable_area
+    # Prefer the API's precomputed price/m2; derive only as a fallback.
+    if price_hidden:
+        price_per_m2 = None
+    elif detail.price_czk_m2:
+        price_per_m2 = detail.price_czk_m2
+    else:
+        price_per_m2 = price // area if area else None
 
-    # When category_main_cb is unknown we have no sub-table to consult.
-    # Skip the lookup (and its warning) entirely - `_codebook_name` above
-    # already warned about the unknown main code, so warning again here
-    # would just create misleading noise blaming the sub code.
-    if rd.category_main_cb == 1:
+    if main_cb == 1:
         sub_slug = codebooks.slug_or_numeric(
-            codebooks.APT_DISPOSITION, rd.category_sub_cb, "category_sub_cb",
+            codebooks.APT_DISPOSITION, sub_cb, "category_sub_cb",
         )
-    elif rd.category_main_cb == 2:
+    elif main_cb == 2:
         sub_slug = codebooks.slug_or_numeric(
-            codebooks.HOUSE_TYPE, rd.category_sub_cb, "category_sub_cb",
+            codebooks.HOUSE_TYPE, sub_cb, "category_sub_cb",
         )
     else:
-        sub_slug = str(rd.category_sub_cb)
+        sub_slug = str(sub_cb)
 
-    image_urls = _extract_image_urls(detail.embedded)
+    image_urls = _image_urls(detail.advert_images)
 
     return Facts(
-        hash_id=rd.hash_id,
+        hash_id=detail.hash_id,
         url=build_listing_url(
-            category_type_cb=rd.category_type_cb,
-            category_main_cb=rd.category_main_cb,
-            category_sub_cb=rd.category_sub_cb,
-            locality_slug=detail.seo.locality,
-            hash_id=rd.hash_id,
+            category_type_cb=type_cb,
+            category_main_cb=main_cb,
+            category_sub_cb=sub_cb,
+            locality_slug=build_locality_slug(detail.locality),
+            hash_id=detail.hash_id,
         ),
-        title=detail.name.value,
-        locality_display=detail.locality.value,
-        lat=detail.map.lat,
-        lon=detail.map.lon,
+        title=detail.advert_name,
+        locality_display=detail.locality.display(),
+        lat=detail.locality.gps_lat,
+        lon=detail.locality.gps_lon,
 
-        category_main_cb=rd.category_main_cb,
-        category_sub_cb=rd.category_sub_cb,
-        category_type_cb=rd.category_type_cb,
+        category_main_cb=main_cb,
+        category_sub_cb=sub_cb,
+        category_type_cb=type_cb,
         category_main=_codebook_name(
-            codebooks.CATEGORY_MAIN, rd.category_main_cb, "category_main_cb",
+            codebooks.CATEGORY_MAIN, main_cb, "category_main_cb",
         ),
         category_type=_codebook_name(
-            codebooks.CATEGORY_TYPE, rd.category_type_cb, "category_type_cb",
+            codebooks.CATEGORY_TYPE, type_cb, "category_type_cb",
         ),
         sub_slug=sub_slug,
 
@@ -287,42 +264,44 @@ def extract_facts(
         usable_area=area,
         floor_n=floor_n,
         total_floors=total_floors,
-        floor_display=floor_display,
+        floor_display=floor_display(floor_n, total_floors),
 
-        ownership=codebooks.OWNERSHIP.get(rd.ownership) if rd.ownership else None,
-        building_type=(
-            codebooks.BUILDING_TYPE.get(rd.building_type) if rd.building_type else None
+        # ownership / energy use stable integer codes; building_type,
+        # building_condition, furnished diverged so are read by Czech name.
+        ownership=(
+            codebooks.OWNERSHIP.get(detail.ownership.value)
+            if detail.ownership and detail.ownership.value else None
         ),
-        building_condition=(
-            codebooks.BUILDING_CONDITION.get(rd.building_condition)
-            if rd.building_condition else None
+        building_type=_enum_name(detail.building_type, codebooks.BUILDING_TYPE_BY_CZECH),
+        building_condition=_enum_name(
+            detail.building_condition, codebooks.BUILDING_CONDITION_BY_CZECH
         ),
         energy_class=(
-            codebooks.ENERGY_CLASS.get(rd.energy_efficiency_rating_cb)
-            if rd.energy_efficiency_rating_cb else None
+            codebooks.ENERGY_CLASS.get(detail.energy_efficiency_rating_cb.value)
+            if detail.energy_efficiency_rating_cb else None
         ),
-        furnished=codebooks.FURNISHED.get(rd.furnished, "unknown"),
+        furnished=_enum_name(detail.furnished, codebooks.FURNISHED_BY_CZECH) or "unknown",
 
-        balcony=_is_yes(rd.balcony),
-        terrace=_is_yes(rd.terrace),
-        loggia=_is_yes(rd.loggia),
-        cellar=_is_yes(rd.cellar),
-        garage=_is_yes(rd.garage),
-        elevator=_is_yes(rd.elevator),
-        low_energy=_is_yes(rd.low_energy),
-        easy_access=_is_yes(rd.easy_access),
-        basin=_is_yes(rd.basin),
-        parking_lots=rd.parking_lots,
+        balcony=detail.balcony,
+        terrace=detail.terrace,
+        loggia=detail.loggia,
+        cellar=detail.cellar,
+        garage=detail.garage,
+        elevator=_yes(detail.elevator),
+        low_energy=detail.low_energy,
+        easy_access=_yes(detail.easy_access),
+        basin=detail.basin,
+        parking_lots=detail.parking,
 
         image_count=len(image_urls),
         image_urls=image_urls,
-        description=detail.text.value,
-        description_length=len(detail.text.value),
-        aktualizace=_find_item(detail.items, "Aktualizace"),
-        labels=list(summary.labels) if summary else [],
+        description=detail.advert_description,
+        description_length=len(detail.advert_description),
+        aktualizace=detail.edited,
+        labels=[],
 
-        locality_region_id=rd.locality_region_id,
-        locality_district_id=rd.locality_district_id,
+        locality_region_id=detail.locality.region_id,
+        locality_district_id=detail.locality.district_id,
     )
 
 

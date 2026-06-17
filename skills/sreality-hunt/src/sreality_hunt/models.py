@@ -16,182 +16,203 @@ they're the natural home for "user-facing config object".
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from . import codebooks
 
 # ============================================================================
-# API response models
+# API response models (sreality `/api/v1`)
 # ============================================================================
+#
+# Schema notes (probe 2026-06-13):
+#   * Search:  GET /api/v1/estates/search -> {results: [...], pagination: {...}}
+#   * Detail:  GET /api/v1/estates/<id>   -> {result: {...flat snake_case...}}
+# Detail is a flat object: codebook fields are {name, value} dicts, amenities
+# are real bools, floors are plain ints, prices are floats. We model only what
+# we use; `extra="ignore"` drops the rest. See docs/sreality-api-findings.md.
 
 
-class GPS(BaseModel):
-    """`gps` block on listing summary."""
-    lat: float
-    lon: float
+def _to_int(v: Any) -> Any:
+    """Coerce a possibly-float price (e.g. 15928030.0000002 for EUR listings)
+    to int. Explicit null -> 0; other types pass through for pydantic."""
+    if v is None:
+        return 0
+    if isinstance(v, float):
+        return int(round(v))
+    return v
 
 
-class SeoSummary(BaseModel):
-    """`seo` block on both summary and detail; carries URL slug components."""
-    category_main_cb: int
-    category_sub_cb: int
-    category_type_cb: int
-    locality: str  # URL slug, e.g. "klatovy-klatovy-iii-husovo-namesti"
+def _none_to_false(v: Any) -> Any:
+    """Map an explicit null to False (the API sometimes sends null bools)."""
+    return False if v is None else v
+
+
+def _none_to_zero(v: Any) -> Any:
+    """Map an explicit null to 0 (e.g. `parking: null`)."""
+    return 0 if v is None else v
+
+
+# The API uses explicit nulls where a field is unset; these annotated types
+# normalize null to the type's zero value (pydantic's field default only
+# applies when the key is absent, not when it's present-but-null).
+def _none_to_empty(v: Any) -> Any:
+    """Map an explicit null to "" (e.g. a shell listing's missing description)."""
+    return "" if v is None else v
+
+
+def _to_int_opt(v: Any) -> Any:
+    """Like `_to_int` but preserves None (distinguishes "unknown" from 0)."""
+    if v is None:
+        return None
+    if isinstance(v, float):
+        return int(round(v))
+    return v
+
+
+CzkInt = Annotated[int, BeforeValidator(_to_int)]
+OptCzkInt = Annotated[int | None, BeforeValidator(_to_int_opt)]
+BoolField = Annotated[bool, BeforeValidator(_none_to_false)]
+IntField = Annotated[int, BeforeValidator(_none_to_zero)]
+StrField = Annotated[str, BeforeValidator(_none_to_empty)]
+
+
+class CodeItem(BaseModel):
+    """A `{name, value}` codebook field from the detail endpoint.
+
+    `value` is the integer code (0 = "not specified"); `name` is the canonical
+    Czech display string. We read diverged enums via `name` (see codebooks).
+    """
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    value: int = 0
+
+
+class Locality(BaseModel):
+    """Flat `locality` block shared by summary and detail responses."""
+    model_config = ConfigDict(extra="ignore")
+
+    city: str | None = None
+    citypart: str | None = None
+    quarter: str | None = None
+    street: str | None = None
+    district: str | None = None
+    region: str | None = None
+
+    city_seo_name: str | None = None
+    citypart_seo_name: str | None = None
+    quarter_seo_name: str | None = None
+    street_seo_name: str | None = None
+    ward_seo_name: str | None = None
+
+    region_id: int | None = None
+    district_id: int | None = None
+    gps_lat: float | None = None
+    gps_lon: float | None = None
+
+    def display(self) -> str:
+        """Human-readable address line, e.g. "Lísáků, Praha-Zbraslav"."""
+        area = self.quarter or self.citypart or self.city
+        parts = [p for p in (self.street, area) if p]
+        return ", ".join(parts) if parts else (self.city or "")
+
+
+class AdvertImage(BaseModel):
+    """One entry from detail `advert_images`. `url` is protocol-relative
+    ("//d18-a.sdn.cz/..."); facts.py upgrades it to https. A null url coerces
+    to "" (and is skipped downstream) so a stored snapshot still re-parses."""
+    model_config = ConfigDict(extra="ignore")
+    url: StrField = ""
+    kind: int = 2          # 2=photo, 4=floor plan / other
+    order: int = 0
 
 
 class ListingSummary(BaseModel):
-    """One entry from `_embedded.estates[]` in the list endpoint.
+    """One entry from `results[]` in the search endpoint.
 
-    Many fields are present in the API response but unused here; pydantic
-    ignores them under the default `extra="ignore"` behavior.
+    The v1 summary is thin: no area/floor/building/amenity detail (those come
+    from the detail endpoint). `price_czk_m2` is precomputed by the API and
+    used directly for comparable pricing.
     """
     model_config = ConfigDict(extra="ignore")
 
     hash_id: int
-    name: str
-    price: int                  # CZK; 0 or 1 = "Cena v RK" (hidden)
-    locality: str               # display string, not the URL slug
-    gps: GPS
-    seo: SeoSummary
-    labels: list[str] = []
-    advert_images_count: int = 0
-    new: bool = False
-    is_topped: bool = False
-    is_auction: bool = False
-
-
-class NameValue(BaseModel):
-    """Several detail fields use {name, value} pairs; modeled as one helper."""
-    model_config = ConfigDict(extra="ignore")
-    name: str
-    value: str
-
-
-class PriceCzk(BaseModel):
-    """`price_czk` block. Can come back as `{}` for "Cena v RK" listings;
-    we default `value_raw` to 0 so downstream code uses the existing
-    `price_hidden` path instead of crashing on a missing field."""
-    model_config = ConfigDict(extra="ignore")
-    value_raw: int = 0
-    value: str | None = None
-    name: str | None = None
-    unit: str | None = None
-
-
-class LocalityField(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    name: str | None = None
-    value: str
-    accuracy: str | None = None  # "address", "street", "ward", ...
-
-
-class MapField(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    lat: float
-    lon: float
-    zoom: int | None = None
-
-
-class RecommendationsData(BaseModel):
-    """Machine-readable English-keyed dump from the detail endpoint.
-
-    Goldmine for filtering and scoring. Most fields are optional because
-    sreality omits unknown values rather than emitting nulls.
-    """
-    model_config = ConfigDict(extra="ignore")
-
-    hash_id: int
-    category_main_cb: int
-    category_sub_cb: int
-    category_type_cb: int
-
-    usable_area: int | None = None
-    room_count_cb: int | None = None
-
-    ownership: int | None = None
-    building_type: int | None = None
-    building_condition: int | None = None
-    energy_efficiency_rating_cb: int | None = None
-
-    # All of these are tri-state ints in the API: 0=no info, 1=yes,
-    # 2=uncertain/partial. Don't coerce to bool here - facts.py decides what
-    # "yes-ish" means per check.
-    balcony: int = 0
-    terrace: int = 0
-    loggia: int = 0
-    cellar: int = 0
-    garage: int = 0
-    parking_lots: int = 0
-    elevator: int = 0
-    furnished: int = 0
-    low_energy: int = 0
-    easy_access: int = 0
-    basin: int = 0
-
-    locality_region_id: int | None = None
-    locality_district_id: int | None = None
-    locality_municipality_id: int | None = None
-    locality_quarter_id: int | None = None
-    locality_ward_id: int | None = None
-    locality_street_id: int | None = None
-    locality_gps_lat: float | None = None
-    locality_gps_lon: float | None = None
-
-    price_summary_czk: int | None = None
+    advert_name: StrField = ""
+    price: CzkInt = 0           # CZK; 0 or 1 = "Cena v RK" (hidden)
+    price_czk: CzkInt = 0
+    price_czk_m2: OptCzkInt = None
+    locality: Locality = Field(default_factory=Locality)
 
 
 class ListingDetail(BaseModel):
-    """Detail endpoint response (`/api/cs/v2/estates/<hash_id>`).
+    """The `result` object from `GET /api/v1/estates/<hash_id>` (flat schema)."""
+    model_config = ConfigDict(extra="ignore")
 
-    Heavy nested data (POIs, seller, similar adverts) is intentionally not
-    modeled; we keep it as raw dicts (or strip it in `slim_detail`) since we
-    only read it occasionally for display.
-    """
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    hash_id: int
+    advert_name: StrField = ""
+    advert_description: StrField = ""
 
-    name: NameValue
-    text: NameValue                       # text.value is the description
-    price_czk: PriceCzk
-    items: list[dict[str, Any]] = []      # Czech-labeled facts list
-    recommendations_data: RecommendationsData
-    locality: LocalityField
-    map: MapField
-    seo: SeoSummary
-    code_items: dict[str, Any] = Field(default_factory=dict, alias="codeItems")
-    embedded: dict[str, Any] = Field(default_factory=dict, alias="_embedded")
+    category_main_cb: CodeItem
+    category_sub_cb: CodeItem
+    category_type_cb: CodeItem
 
-    # POI summaries: we keep these as dicts because we mostly forward them
-    # to the LLM or to a future geo-enrichment step.
-    poi: list[dict[str, Any]] = []
-    poi_transport: dict[str, Any] | None = None
-    poi_grocery: dict[str, Any] | None = None
-    poi_school_kindergarten: dict[str, Any] | None = None
-    poi_doctors: dict[str, Any] | None = None
-    poi_leisure_time: dict[str, Any] | None = None
-    poi_restaurant: dict[str, Any] | None = None
+    usable_area: int | None = None
+    floor_number: int | None = None
+    floors: int | None = None
+    underground_floors: int | None = None
 
-    is_topped: bool = False
-    is_topped_today: bool = False
-    meta_description: str | None = None
+    # Diverged-code enums (read via .name) + stable-code enums (read via .value).
+    ownership: CodeItem | None = None
+    building_type: CodeItem | None = None
+    building_condition: CodeItem | None = None
+    energy_efficiency_rating_cb: CodeItem | None = None
+    furnished: CodeItem | None = None
+    elevator: CodeItem | None = None
+    easy_access: CodeItem | None = None
+
+    # v1 sends these as real bools (occasionally explicit null -> False).
+    balcony: BoolField = False
+    terrace: BoolField = False
+    loggia: BoolField = False
+    cellar: BoolField = False
+    garage: BoolField = False
+    low_energy: BoolField = False
+    basin: BoolField = False
+    parking: IntField = 0          # count of parking spots/lots
+
+    price_czk: CzkInt = 0
+    price_summary_czk: CzkInt = 0
+    price_czk_m2: OptCzkInt = None
+
+    locality: Locality
+    advert_images: list[AdvertImage] = []
+
+    edited: str | None = None   # ISO date, last update
+    since: str | None = None    # ISO date, first published
+    exclusively_at_rk: BoolField = False
 
 
 class ListResponse(BaseModel):
-    """List endpoint response wrapper."""
+    """Search endpoint response wrapper (`results` + `pagination`)."""
     model_config = ConfigDict(extra="ignore")
 
-    result_size: int
-    page: int
-    per_page: int
-    estates: list[ListingSummary]
+    results: list[ListingSummary] = []
+    total: int = 0
 
     @classmethod
     def parse_api(cls, payload: dict[str, Any]) -> "ListResponse":
-        """Lift `_embedded.estates` onto the top-level `estates` field."""
+        """Lift `pagination.total` onto the top-level `total` field."""
         flat = dict(payload)
-        flat["estates"] = (payload.get("_embedded") or {}).get("estates", [])
+        flat["total"] = (payload.get("pagination") or {}).get("total", 0)
         return cls.model_validate(flat)
 
 

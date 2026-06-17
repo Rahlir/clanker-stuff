@@ -63,8 +63,24 @@ HOUSE_TYPE: dict[int, tuple[str, str]] = {
 }
 
 # --- Detail-only enums ------------------------------------------------------
+#
+# IMPORTANT: the `/api/v1` detail endpoint returns these as {name, value}
+# objects whose integer `value` codes DIVERGE from the old `/api/cs/v2`
+# codebooks. Verified divergences (probe 2026-06-13):
+#   * building_type:      v1 2=Cihlová, 5=Panelová, 6=Skeletová, 7=Smíšená
+#                         (v2 had 1=cihla, 2=panel, ...)
+#   * building_condition: v1 6=Novostavba, 8=Před rekonstrukcí, 9=Po rekonstrukci
+#                         (v2 had 2=novostavba, 6=pred_rekonstrukci, ...)
+#   * furnished:          v1 1=Ano, 2=Ne, 3=Částečně (v2 had 2=partial, 3=false)
+# category_sub_cb, ownership (1/2), and energy codes happen to be unchanged.
+#
+# Rather than chase shifting integer codes, the diverged enums are read by
+# their canonical Czech `name` (which the API always sends). The integer-code
+# dicts below are kept ONLY for the enums whose codes are verified stable and
+# are still sent to the API as integers (category/type/sub, energy, ownership).
 
-# `recommendations_data.ownership` and `codeItems.ownership`
+# `ownership.value` - codes 1/2 verified against v1; 3/4 best-effort (rare).
+# Still used as an integer when pushing the `ownership` filter to the API.
 OWNERSHIP: dict[int, str] = {
     1: "osobni",
     2: "druzstevni",
@@ -72,37 +88,8 @@ OWNERSHIP: dict[int, str] = {
     4: "jine",
 }
 
-# `recommendations_data.building_type`. Values 1, 2 confirmed in probes;
-# others inferred from sreality web UI.
-BUILDING_TYPE: dict[int, str] = {
-    1: "cihla",
-    2: "panel",
-    3: "ostatni",
-    4: "montovana",
-    5: "skeletova",
-    6: "kamenna",
-    7: "smisena",
-    8: "drevostavba",
-    9: "nezadano",
-}
-
-# `recommendations_data.building_condition`. Empirical mapping; codes 7 and 9
-# both appeared as "Po rekonstrukci" in the wild. For display use the Czech
-# string from `items[]` Stav objektu; this map is for filtering only.
-BUILDING_CONDITION: dict[int, str] = {
-    1:  "ve_vystavbe",
-    2:  "novostavba",
-    3:  "velmi_dobry",
-    4:  "dobry",
-    5:  "v_rekonstrukci",
-    6:  "pred_rekonstrukci",
-    7:  "po_rekonstrukci",
-    8:  "spatny",
-    9:  "po_rekonstrukci",
-    10: "projekt",
-}
-
-# `recommendations_data.energy_efficiency_rating_cb`
+# `energy_efficiency_rating_cb.value` - codes 1..7 = A..G, verified unchanged
+# between v2 and v1.
 ENERGY_CLASS: dict[int, str] = {
     1: "A",
     2: "B",
@@ -113,12 +100,40 @@ ENERGY_CLASS: dict[int, str] = {
     7: "G",
 }
 
-# `recommendations_data.furnished`
-FURNISHED: dict[int, str] = {
-    0: "unknown",
-    1: "true",
-    2: "partial",
-    3: "false",
+# Diverged enums, read by Czech display name. Maps the API's `name` string to
+# the friendly identifier users write in YAML must-haves. Unknown names fall
+# back to None in facts.py (categorical "unknown"). Keys cover every option in
+# the sreality filter UI; extend if a new string is observed.
+BUILDING_TYPE_BY_CZECH: dict[str, str] = {
+    "Cihlová":     "cihla",
+    "Panelová":    "panel",
+    "Skeletová":   "skeletova",
+    "Smíšená":     "smisena",
+    "Montovaná":   "montovana",
+    "Kamenná":     "kamenna",
+    "Dřevostavba": "drevostavba",
+    "Ostatní":     "ostatni",
+}
+
+BUILDING_CONDITION_BY_CZECH: dict[str, str] = {
+    "Novostavba":        "novostavba",
+    "Velmi dobrý":       "velmi_dobry",
+    "Dobrý":             "dobry",
+    "Ve výstavbě":       "ve_vystavbe",
+    "Projekt":           "projekt",
+    "V rekonstrukci":    "v_rekonstrukci",
+    "Před rekonstrukcí": "pred_rekonstrukci",
+    "Po rekonstrukci":   "po_rekonstrukci",
+    "Špatný":            "spatny",
+}
+
+# `furnished.name` -> friendly. The friendly set matches the YAML enum used
+# by the `furnished` must-have check ({true, partial, false}); value 0 / an
+# unknown name maps to "unknown".
+FURNISHED_BY_CZECH: dict[str, str] = {
+    "Ano":      "true",
+    "Ne":       "false",
+    "Částečně": "partial",
 }
 
 # --- Reverse lookups --------------------------------------------------------
@@ -137,12 +152,8 @@ CATEGORY_MAIN_BY_NAME: dict[str, int] = _reverse_main(CATEGORY_MAIN)
 CATEGORY_TYPE_BY_NAME: dict[str, int] = _reverse_main(CATEGORY_TYPE)
 APT_DISPOSITION_BY_NAME: dict[str, int] = _reverse_main(APT_DISPOSITION)
 HOUSE_TYPE_BY_NAME: dict[str, int] = _reverse_main(HOUSE_TYPE)
+# osobni=1 / druzstevni=2 verified for the `ownership` API filter push.
 OWNERSHIP_BY_NAME: dict[str, int] = {v: k for k, v in OWNERSHIP.items()}
-# building_condition has duplicate values (7 and 9 both po_rekonstrukci);
-# the reverse pick is whichever appears last (9), which is what we want when
-# filtering since 9 was the value seen in the wild for the test listing.
-BUILDING_CONDITION_BY_NAME: dict[str, int] = {v: k for k, v in BUILDING_CONDITION.items()}
-BUILDING_TYPE_BY_NAME: dict[str, int] = {v: k for k, v in BUILDING_TYPE.items()}
 ENERGY_CLASS_BY_NAME: dict[str, int] = {v: k for k, v in ENERGY_CLASS.items()}
 
 
@@ -151,8 +162,8 @@ ENERGY_CLASS_BY_NAME: dict[str, int] = {v: k for k, v in ENERGY_CLASS.items()}
 APT_DISPOSITION_NAMES: frozenset[str] = frozenset(APT_DISPOSITION_BY_NAME)
 HOUSE_TYPE_NAMES: frozenset[str] = frozenset(HOUSE_TYPE_BY_NAME)
 OWNERSHIP_NAMES: frozenset[str] = frozenset(OWNERSHIP_BY_NAME)
-BUILDING_TYPE_NAMES: frozenset[str] = frozenset(BUILDING_TYPE_BY_NAME)
-BUILDING_CONDITION_NAMES: frozenset[str] = frozenset(BUILDING_CONDITION_BY_NAME)
+BUILDING_TYPE_NAMES: frozenset[str] = frozenset(BUILDING_TYPE_BY_CZECH.values())
+BUILDING_CONDITION_NAMES: frozenset[str] = frozenset(BUILDING_CONDITION_BY_CZECH.values())
 ENERGY_CLASS_NAMES: frozenset[str] = frozenset(ENERGY_CLASS_BY_NAME)
 
 

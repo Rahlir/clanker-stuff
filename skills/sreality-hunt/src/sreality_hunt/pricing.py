@@ -12,10 +12,10 @@ Architecture:
     first lookup in a bucket triggers one API call; subsequent lookups in
     the same bucket are free.
 
-  * Comparables are sourced from the list endpoint only (no per-listing
-    detail fetches). `usable_area` is parsed from the summary's `name`
-    field; listings whose area can't be parsed or whose price is hidden
-    ("Cena v RK") are excluded.
+  * Comparables are sourced from the search endpoint only (no per-listing
+    detail fetches). The v1 summary includes a precomputed `price_czk_m2`,
+    so we use it directly; listings with a hidden price ("Cena v RK") or no
+    price/m2 are excluded.
 
   * No area-window filter in v1. The disposition code (e.g. 3+kk) already
     constrains area implicitly, and skipping the area filter lets one
@@ -23,7 +23,6 @@ Architecture:
 """
 
 import logging
-import re
 from statistics import median as _median
 
 from pydantic import BaseModel, ConfigDict
@@ -49,8 +48,6 @@ class ComparableListing(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     hash_id: int
-    price_czk: int
-    usable_area: int
     price_per_m2: int
 
 
@@ -80,40 +77,6 @@ class PriceContext(BaseModel):
 # ============================================================================
 
 
-# Matches a number with optional Czech thousands separator (regular space or
-# non-breaking space) followed by "m²". A separator is only valid between
-# exactly-3-digit groups - that's the distinguishing rule. Without it, a
-# string like "1+1 28 m²" would parse as 128 (treating " " as a thousands
-# separator between "1" and "28").
-#
-# Examples extracted from real listing summaries:
-#   "Prodej bytu 4+kk 78 m²"                          -> 78
-#   "Prodej bytu 1+1 28\xa0m²"                        -> 28
-#   "Prodej rodinného domu 350 m², pozemek 922 m²"    -> 350 (first match)
-#   "Prodej chalupy 1 549 m²"                         -> 1549
-#   "Prodej bytu 12 345 m²"                          -> 12345
-#
-# Accepted limitations (none observed in the wild as of probing 2026-05-17):
-#   * Only matches "m²" (Unicode U+00B2). ASCII "m2" / "m^2" variants would
-#     be silently dropped from the comparable set.
-#   * A 4+ digit area without a thousands separator ("1234 m²") would parse
-#     wrong; sreality consistently uses the separator.
-_AREA_FROM_NAME_RE = re.compile(r"(\d{1,3}(?:[\s\u00a0]\d{3})*)\s*m²")
-
-
-def parse_area_from_name(name: str) -> int | None:
-    """Extract usable area in m² from a listing summary `name`. None if absent."""
-    m = _AREA_FROM_NAME_RE.search(name)
-    if not m:
-        return None
-    digits = re.sub(r"[\s\u00a0]", "", m.group(1))
-    try:
-        n = int(digits)
-    except ValueError:
-        return None
-    return n if n > 0 else None
-
-
 def compute_percentile(target: int, comparables: list[int]) -> int | None:
     """Percent of `comparables` with value <= `target`. None if empty."""
     if not comparables:
@@ -135,7 +98,7 @@ class ComparablePricingProvider:
     """In-memory comparable-pricing cache for one digest run.
 
     Excludes the target itself, listings with hidden prices, and listings
-    whose summary `name` doesn't include a parseable area.
+    with no precomputed `price_czk_m2`.
 
     Not safe for concurrent use from multiple threads (the cache is a plain
     dict). The agreed-upon digest workflow is sequential, so this is fine.
@@ -227,18 +190,15 @@ class ComparablePricingProvider:
         ):
             if summary.price < PRICE_HIDDEN_THRESHOLD:
                 continue
-            area = parse_area_from_name(summary.name)
-            if area is None:
+            per_m2 = summary.price_czk_m2
+            if not per_m2:
                 log.debug(
-                    "couldn't parse area from name %r (hash_id=%d); excluding",
-                    summary.name, summary.hash_id,
+                    "no price_czk_m2 for hash_id=%d; excluding", summary.hash_id,
                 )
                 continue
             comparables.append(ComparableListing(
                 hash_id=summary.hash_id,
-                price_czk=summary.price,
-                usable_area=area,
-                price_per_m2=summary.price // area,
+                price_per_m2=per_m2,
             ))
         log.debug(
             "fetched comparable bucket district=%d main=%d sub=%d type=%d: %d listings",

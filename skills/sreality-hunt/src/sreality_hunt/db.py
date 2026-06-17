@@ -69,9 +69,9 @@ MIGRATIONS: list[str] = [
         category_main_cb     INTEGER NOT NULL,    -- 1=apt 2=house ...
         category_sub_cb      INTEGER NOT NULL,    -- disposition / house subtype
         category_type_cb     INTEGER NOT NULL,    -- 1=sale 2=rent 3=auction
-        locality_slug        TEXT    NOT NULL,    -- seo.locality (URL slug)
-        locality_region_id   INTEGER,             -- from detail.recommendations_data
-        locality_district_id INTEGER,             -- from detail.recommendations_data
+        locality_slug        TEXT    NOT NULL,    -- assembled locality URL slug
+        locality_region_id   INTEGER,             -- from detail.locality.region_id
+        locality_district_id INTEGER,             -- from detail.locality.district_id
         url                  TEXT    NOT NULL,    -- public detail page URL
         first_seen_at        TEXT    NOT NULL,    -- ISO 8601 UTC
         last_seen_at         TEXT    NOT NULL     -- ISO 8601 UTC, updated each fetch

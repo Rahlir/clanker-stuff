@@ -30,10 +30,13 @@ import json
 import logging
 import sqlite3
 
+from pydantic import ValidationError
+
 from . import db
 from .api import (
     SrealityClient,
     build_listing_url,
+    build_locality_slug,
     slim_detail,
     snapshot_hash,
 )
@@ -145,38 +148,39 @@ def fetch_and_persist_detail(
     Lets `api.ListingNotFound` and other `api.SrealityError` subclasses
     propagate so callers can decide whether to surface, skip, or abort.
     """
-    raw = client.get_detail_raw(hash_id)
+    raw = client.get_detail_raw(hash_id)   # unwrapped `result` object
     detail = ListingDetail.model_validate(raw)
     slim = slim_detail(raw)
     h = snapshot_hash(detail)
-    rd = detail.recommendations_data
+    loc = detail.locality
+    slug = build_locality_slug(loc)
 
     url = build_listing_url(
-        category_type_cb=rd.category_type_cb,
-        category_main_cb=rd.category_main_cb,
-        category_sub_cb=rd.category_sub_cb,
-        locality_slug=detail.seo.locality,
+        category_type_cb=detail.category_type_cb.value,
+        category_main_cb=detail.category_main_cb.value,
+        category_sub_cb=detail.category_sub_cb.value,
+        locality_slug=slug,
         hash_id=hash_id,
     )
     db.upsert_listing(
         db_conn,
         hash_id=hash_id,
-        category_main_cb=rd.category_main_cb,
-        category_sub_cb=rd.category_sub_cb,
-        category_type_cb=rd.category_type_cb,
-        locality_slug=detail.seo.locality,
-        locality_region_id=rd.locality_region_id,
-        locality_district_id=rd.locality_district_id,
+        category_main_cb=detail.category_main_cb.value,
+        category_sub_cb=detail.category_sub_cb.value,
+        category_type_cb=detail.category_type_cb.value,
+        locality_slug=slug,
+        locality_region_id=loc.region_id,
+        locality_district_id=loc.district_id,
         url=url,
     )
     snapshot_id, _inserted = db.insert_snapshot_if_changed(
         db_conn,
         hash_id=hash_id,
         snapshot_hash=h,
-        price_czk=detail.price_czk.value_raw,
-        usable_area=rd.usable_area,
-        title=detail.name.value,
-        locality_display=detail.locality.value,
+        price_czk=detail.price_czk,
+        usable_area=detail.usable_area,
+        title=detail.advert_name,
+        locality_display=loc.display(),
         raw_json=json.dumps(slim, ensure_ascii=False, separators=(",", ":")),
     )
     return detail, snapshot_id
@@ -204,4 +208,19 @@ def _load_from_snapshot(
             f"run without --from-snapshot to fetch fresh"
         )
     raw = json.loads(snap["raw_json"])
-    return ListingDetail.model_validate(raw), int(snap["id"])
+    try:
+        return ListingDetail.model_validate(raw), int(snap["id"])
+    except ValidationError as e:
+        # Most likely the snapshot predates the v1 schema migration; treat as
+        # unusable so the caller re-fetches fresh instead of crashing. Logged
+        # (not silent) so a genuine v1 parsing regression is still visible.
+        # ValidationError.__str__ is a multi-line table; keep the log to one line.
+        summary = str(e).splitlines()[0] if str(e) else repr(e)
+        log.warning(
+            "snapshot for %d failed to parse as ListingDetail (%s); "
+            "treating as missing", hash_id, summary,
+        )
+        raise SnapshotMissing(
+            f"snapshot for {hash_id} could not be reparsed "
+            f"(likely pre-v1 schema); run without --from-snapshot to fetch fresh"
+        ) from e
