@@ -37,7 +37,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from . import codebooks
-from .api import build_listing_url, build_locality_slug
+from .api import build_listing_url, build_locality_slug, image_view_url
 from .models import AdvertImage, CodeItem, ListingDetail, ListingSummary, MustHave
 
 log = logging.getLogger("sreality_hunt.facts")
@@ -88,13 +88,15 @@ def _enum_name(item: CodeItem | None, table: dict[str, str]) -> str | None:
 
 
 def _image_urls(images: list[AdvertImage]) -> list[str]:
-    """Upgrade protocol-relative advert image URLs to https. Skips blanks."""
+    """Fetchable https URLs for advert images, in gallery order. Skips blanks.
+
+    Each URL carries the CDN transform query; see `api.image_view_url` for
+    why (bare CDN URLs 401)."""
     urls: list[str] = []
     for img in images:
-        url = img.url
-        if not url:
-            continue
-        urls.append(f"https:{url}" if url.startswith("//") else url)
+        url = image_view_url(img.url)
+        if url:
+            urls.append(url)
     return urls
 
 
@@ -182,9 +184,10 @@ class Facts(BaseModel):
 
     # --- Description / media ---
     image_count: int
-    image_urls: list[str] = []  # preview-size (~749x562); see _extract_image_urls
+    image_urls: list[str] = []  # fetchable CDN URLs; see api.image_view_url
     description: str
     description_length: int
+    since: str | None           # v1 `since` ISO date, first published (time-on-market)
     aktualizace: str | None     # v1 `edited` ISO date, e.g. "2026-06-12"
     labels: list[str] = []      # always empty (v1 search summary has no labels)
 
@@ -297,6 +300,7 @@ def extract_facts(
         image_urls=image_urls,
         description=detail.advert_description,
         description_length=len(detail.advert_description),
+        since=detail.since,
         aktualizace=detail.edited,
         labels=[],
 

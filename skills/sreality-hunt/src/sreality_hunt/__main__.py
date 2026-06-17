@@ -12,6 +12,7 @@ Subcommand surface:
   digest   <search> [--limit N]
   evaluate <listing-id> [--search NAME] [--from-snapshot]
   fetch    <listing-id> [--from-snapshot]
+  images   <listing-id> [--from-snapshot] [--limit N]
   mark     <listing-id> <reaction> [--note TEXT] [--search NAME]
   history  [--search NAME] [--reaction TYPE] [--limit N]
   distill  <search> [--apply FILE | --apply -]
@@ -46,6 +47,7 @@ from .api import ListingNotFound, SrealityClient, SrealityError
 from .digest import run_digest
 from .evaluate import SnapshotMissing, fetch_and_persist_detail, run_evaluate
 from .facts import extract_facts
+from .images import DEFAULT_IMAGE_LIMIT, run_images
 from .learning import build_fewshot_examples, run_distill, run_history, run_mark
 from .models import ListingDetail, SavedSearch
 from .pricing import ComparablePricingProvider
@@ -190,6 +192,16 @@ def _build_parser() -> argparse.ArgumentParser:
     pf = sub.add_parser("fetch", help="dump structured facts for a listing (no checks, no pricing)")
     pf.add_argument("listing_id", type=int)
     pf.add_argument("--from-snapshot", action="store_true")
+
+    # --- images ---
+    pimg = sub.add_parser(
+        "images", help="download a listing's photos to a temp dir for local viewing",
+    )
+    pimg.add_argument("listing_id", type=int)
+    pimg.add_argument("--from-snapshot", action="store_true",
+                      help="reuse the latest snapshot's image list instead of re-fetching detail")
+    pimg.add_argument("--limit", type=int, default=None,
+                      help=f"max images to download (default {DEFAULT_IMAGE_LIMIT})")
 
     # --- mark ---
     pm = sub.add_parser("mark", help="record a reaction on a listing")
@@ -463,6 +475,27 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_images(args: argparse.Namespace) -> int:
+    """Download a listing's photos to a temp dir and print local paths.
+
+    Image bytes always come from the CDN; --from-snapshot only avoids
+    re-fetching the detail JSON (the URL list), not the downloads.
+    """
+    with closing(_open_db()) as conn, _build_client() as client:
+        if args.from_snapshot:
+            snap = db.get_latest_snapshot(conn, args.listing_id)
+            if snap is None:
+                raise SnapshotMissing(
+                    f"no snapshot in DB for listing {args.listing_id}; "
+                    f"run without --from-snapshot to fetch fresh"
+                )
+            detail = ListingDetail.model_validate(json.loads(snap["raw_json"]))
+        else:
+            detail, _sid = fetch_and_persist_detail(conn, client, args.listing_id)
+        print(run_images(detail, limit=args.limit or DEFAULT_IMAGE_LIMIT))
+    return EXIT_OK
+
+
 def _cmd_mark(args: argparse.Namespace) -> int:
     with closing(_open_db()) as conn:
         out = run_mark(
@@ -568,6 +601,7 @@ _DISPATCH: dict[str, Any] = {
     "digest":   _cmd_digest,
     "evaluate": _cmd_evaluate,
     "fetch":    _cmd_fetch,
+    "images":   _cmd_images,
     "mark":     _cmd_mark,
     "history":  _cmd_history,
     "distill":  _cmd_distill,

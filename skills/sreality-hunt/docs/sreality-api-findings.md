@@ -133,6 +133,18 @@ since              string         ISO date, first published
 exclusively_at_rk  bool
 ```
 
+#### Image CDN requires a transform query
+
+The `advert_images[].url` values are protocol-relative paths
+(`//d18-a.sdn.cz/...`). Fetching one as-is returns **HTTP 401**; the CDN
+(`d*.sdn.cz`) only serves images through its transform pipeline, passed
+as an `fl=` query string, e.g.
+`?fl=res,1200,1200,1|shr,,20|jpg,80` (box-fit ~1200px, sharpen, JPEG
+q80 - the same shape the sreality.cz gallery requests; output is JPEG
+regardless of the source extension). `api.image_view_url` builds these,
+and the `images` subcommand downloads them locally. If image fetches
+start 401-ing again, the recipe here is the first thing to re-check.
+
 ### `locality` block (summary + detail)
 
 ```

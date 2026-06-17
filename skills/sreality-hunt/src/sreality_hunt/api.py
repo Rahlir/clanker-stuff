@@ -354,6 +354,28 @@ def _sub_table_for_main(category_main_cb: int) -> dict[int, tuple[str, str]]:
     return {}
 
 
+# sreality's image CDN (d*.sdn.cz) serves advert photos only through its
+# transform pipeline, appended as an `fl=` query string. A bare image URL
+# (just the path) returns HTTP 401. This recipe - box-fit to ~1200px, mild
+# sharpen, JPEG q80 - is the shape the sreality.cz gallery itself requests;
+# it yields an image fine for both inline preview and download-and-read.
+IMAGE_CDN_TRANSFORM = "fl=res,1200,1200,1|shr,,20|jpg,80"
+
+
+def image_view_url(raw_url: str | None) -> str | None:
+    """Turn a raw advert image URL into a fetchable https URL.
+
+    Advert image URLs arrive protocol-relative ("//d18-a.sdn.cz/...") and
+    without the CDN transform query, which the CDN requires (a bare URL
+    401s). Returns None for a blank/missing URL so callers can skip it.
+    """
+    if not raw_url:
+        return None
+    url = f"https:{raw_url}" if raw_url.startswith("//") else raw_url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}{IMAGE_CDN_TRANSFORM}"
+
+
 # ============================================================================
 # Query building from SavedSearch
 # ============================================================================

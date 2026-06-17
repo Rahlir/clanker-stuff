@@ -132,8 +132,14 @@ def render_facts_table(facts: Facts) -> str:
         rows.append(("Amenities", ", ".join(amenities)))
     if facts.furnished not in ("unknown", "false"):
         rows.append(("Furnished", facts.furnished))
+    # `Listed` is the first-published date - the time-on-market signal a
+    # deep dive cares about (a cheap listing sitting for months is a flag).
+    if facts.since:
+        rows.append(("Listed", facts.since))
     if facts.aktualizace:
         rows.append(("Updated", facts.aktualizace))
+    if facts.lat is not None and facts.lon is not None:
+        rows.append(("GPS", f"{facts.lat}, {facts.lon}"))
     if facts.labels:
         rows.append(("Tags", ", ".join(facts.labels)))
 
@@ -261,7 +267,10 @@ def render_description(text: str, max_chars: int | None = 2000) -> str:
 
 
 def render_image_urls(image_urls: list[str], limit: int = 12) -> str:
-    """Bullet list of image URLs. Chat clients with image preview render inline."""
+    """Bullet list of (CDN-transformed, fetchable) image URLs.
+
+    These are clickable references, not inline previews. To actually view
+    photos, use the `images` subcommand (downloads them locally)."""
     if not image_urls:
         return "_(no images)_"
     shown = image_urls[:limit]

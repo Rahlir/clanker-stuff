@@ -256,6 +256,63 @@ obviously fits.
 
 ---
 
+## Workflow 2b: Viewing photos
+
+**Trigger**: anything that needs your eyes on the actual images - the
+photo read in section 5 of an evaluation packet, a "dig deeper" request,
+or questions about layout / light / finish / which way the terrace faces.
+
+The evaluation packet lists image URLs, but those are references, not
+something you can see - and the sreality CDN won't serve a bare URL
+anyway. To actually look at the photos, download them and `read` the
+local files:
+
+```bash
+.venv/bin/sreality-hunt images <id> --from-snapshot
+```
+
+This downloads the photos (floor plans first) to a temp dir and prints a
+local path plus a `photo` / `floor-plan` label per file. Then `read` the
+paths you care about - they render as images. `--limit N` caps how many
+you pull (default 20). Use `--from-snapshot` whenever the digest /
+evaluate already persisted the listing (same rule as evaluate); drop it
+to re-fetch detail first.
+
+**Don't** `curl` the image URLs yourself or `read` a URL directly: the
+CDN needs a transform query and `read` only opens local files. `images`
+handles both. (There is also no need to touch the SQLite DB to get image
+URLs, GPS, or anything else - if you find yourself reaching for the DB,
+the data you want is almost certainly in `evaluate` / `fetch` / `images`
+output already.)
+
+---
+
+## Workflow 2c: Deep dive on a listing
+
+**Trigger**: "dig deeper into X", "tell me more about this one", "what's
+the catch with N".
+
+A deep dive is **composition, not a new data source**. Everything you
+need is already in the CLI's output - don't query the SQLite DB for it.
+
+  1. **Re-read the `evaluate` / `fetch` packet** (re-run with
+     `--from-snapshot` if you don't have it). The facts table includes
+     **Listed** (first-published date = time on market; a cheap listing
+     sitting for months is a red flag worth calling out), **Updated**,
+     and **GPS** (`lat, lon` - use it for commute / map reasoning).
+  2. **Look at the photos**: `images <id> --from-snapshot`, then `read`
+     them (Workflow 2b) - floor plans first.
+  3. **Read the full Czech description** for layout, orientation,
+     parking-in-price ambiguity, heating costs, and agency tells.
+  4. Compose the qualitative analysis (sections 5-7 of the packet) and
+     surface the unknowns the user should ask the agent at a viewing.
+
+If some field genuinely isn't in any of these outputs, say so - don't go
+spelunking in the DB. The schema (`docs/db-schema.md`) is an internal
+implementation detail, not a data interface.
+
+---
+
 ## Workflow 3: Record reactions on the user's behalf
 
 **Trigger phrases**: "I like this one", "skip that", "let's save 4159742028
@@ -354,7 +411,7 @@ The deterministic packet (from `evaluate` or each Re-surfaced block in
 | 2 | **Grade (letter A-F + numeric 0-100 + 1-sentence verdict)** | **You** |
 | 3 | Facts table (disposition, area, floor, ownership, building, condition, energy class, amenities, ...) | CLI |
 | 4 | Must-have check results + tier + price context (percentile, cohort median) | CLI |
-| 5 | **Qualitative analysis (description tone, photo impressions, locality vibe vs soft prefs)** | **You** |
+| 5 | **Qualitative analysis (description tone, photo impressions, locality vibe vs soft prefs)** | **You** (for photo impressions, pull the images with `images <id> --from-snapshot` and `read` them - see Workflow 2b) |
 | 6 | **Red flags (anything contradicting soft prefs or that should worry the user)** | **You** |
 | 7 | **Next actions (`mark`, `open`, `compare`, follow-up questions)** | **You** |
 
@@ -388,6 +445,8 @@ Don't be afraid of low grades. The point is filtering.
 | "evaluate this listing" + URL or id | `evaluate <id> --search <name>` |
 | "evaluate this" + URL, no search context | `evaluate <id>` |
 | "just give me the facts" | `fetch <id>` |
+| "show me the photos" / "look at the layout" / dig into a listing visually | `images <id> --from-snapshot` → `read` the printed paths |
+| "dig deeper into N" / "tell me more about this one" | re-read `evaluate`/`fetch` (Listed + GPS are in the facts table) + `images <id> --from-snapshot`; compose, **don't** query the DB (Workflow 2c) |
 | "what listings have I reacted to?" | `history --search <name>` |
 | "show liked listings" | `history --reaction liked` |
 | "I like this one" | `mark <id> liked --note "..." --search <name>` |
@@ -421,8 +480,10 @@ data, the stderr is what you surface on failure.
 
 ## DOs
 
-  * **Always pass `--from-snapshot`** in evaluate/compare during Pass 2
-    of a digest - the data is in the DB, refetching is wasted budget.
+  * **Always pass `--from-snapshot`** in evaluate/compare/images during
+    Pass 2 of a digest - the data is in the DB, refetching is wasted budget.
+  * **Use `images <id>` to actually see photos**, then `read` the local
+    paths it prints. Never `curl` image URLs or `read` a URL directly.
   * **Always pass `--search <name>`** when the conversation is about a
     specific saved search (gives must-haves, INPUTS appendix, and seen
     tracking).

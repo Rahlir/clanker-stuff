@@ -74,6 +74,9 @@ evaluate <listing-id> [--search NAME] [--from-snapshot]
 fetch <listing-id> [--from-snapshot]                facts + photos + description only
                                                     (no checks, no pricing, no INPUTS)
 
+images <listing-id> [--from-snapshot] [--limit N]   download photos to a temp dir and print
+                                                    local paths (floor plans first); default 20
+
 mark <listing-id> <liked|rejected|saved|visited>
      [--note TEXT] [--search NAME]                  record a reaction
 
