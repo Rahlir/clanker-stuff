@@ -109,6 +109,17 @@ jira open KEY
   but `jira issue edit` sends the body **raw**. So a body that rendered fine
   on create can break on a later edit. Pass already-final wiki markup to
   `edit` on wiki-markup instances.
+- Do **not** pass wiki markup to `jira issue create -b` on a wiki-markup
+  instance: the Markdown conversion mangles it. Observed damage: the blank
+  line between a heading and the list under it is dropped, gluing the first
+  list item onto the heading (`h2. Done when* first item`), and special
+  characters get backslash-escaped (`nba2\-core`, `hashed\_password`,
+  `\(...\)`). Headings survive only because `h2.` is not Markdown.
+- Recommended pattern on wiki-markup instances: create with a minimal body,
+  then `jira issue edit -b` the final wiki markup (edit sends it raw, so it
+  stores verbatim), and verify with `jira issue view KEY --raw`.
+  Alternatively, write the create body in real Markdown and let the
+  converter produce the wiki markup.
 
 **Epic / parent handling:**
 - If the user mentions an epic, parent epic, parent issue, or asks for a Story/Task to be under an epic, use `--parent EPIC-KEY` when creating the issue.
