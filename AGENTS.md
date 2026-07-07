@@ -17,6 +17,15 @@ A pi package containing extensions, skills, prompts, and themes for the `pi` cod
 | Prompt | `prompts/` | `<name>.md` |
 | Theme | `themes/` | `<name>.json` |
 
+## Shared code between extensions (`lib/`)
+
+Code reused by more than one extension lives in repo-root `lib/` (e.g.
+`lib/annotator.ts`, the annotation TUI used by both `annotate` and `mr-review`).
+It is a plain module, not an extension: the `./extensions/*/index.ts` glob does
+not match it, so pi never auto-loads it, but it ships with the package. Extensions
+import it by relative path (`../../lib/<name>.ts`). Prefer this over one extension
+reaching into another's files, so extensions don't depend on each other.
+
 ## Extensions: no build step
 
 pi loads TypeScript extensions directly — there is no compile step. After editing `index.ts`, run `/reload` in pi to pick up the change.
@@ -58,4 +67,12 @@ The existing `extensions/` in this repo are the closest style reference for Type
 
 ## Verification
 
-`package.json` has no `scripts` — there is no `npm test`, lint, or type-check command. After editing an extension, the only meaningful check is loading it in pi with `/reload` and exercising it manually.
+Run `npm run type-check` (`tsc --noEmit` against `tsconfig.json`) after editing any
+extension or `lib/` module. It covers `lib/**` and `extensions/**` with `strict`,
+bundler resolution, and `allowImportingTsExtensions` (matching how pi loads the
+`.ts` files). `extensions/code-review` is currently excluded in `tsconfig.json`
+because it has pre-existing type errors; drop that exclude once they're fixed.
+
+There is still no `npm test` or lint. Type-check is static only — after editing an
+extension, also load it in pi with `/reload` and exercise it manually, since the
+TUI/runtime behavior can't be type-checked.

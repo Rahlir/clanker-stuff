@@ -15,6 +15,9 @@
   },
   "type": "module",
   "private": true,
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
   "pi": {
     "extensions": ["./extensions/*/index.ts"],
     "skills": ["./skills"],
@@ -26,5 +29,8 @@
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
   }
 }

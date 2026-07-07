@@ -2,3 +2,11 @@
 node_modules/
 # python
 __pycache__/
+# Compiled TypeScript output. Sources under lib/ and extensions/ are all .ts and
+# tsconfig sets noEmit; this guards against a stray `tsc` run without --noEmit.
+lib/**/*.js
+lib/**/*.js.map
+lib/**/*.d.ts
+extensions/**/*.js
+extensions/**/*.js.map
+extensions/**/*.d.ts
