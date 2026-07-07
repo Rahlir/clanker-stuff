@@ -27,7 +27,6 @@ the referencing prompt or skill assumes the tool is available.
 |---------------|------|------------------------|--------|
 | `glab` | skill | `prompts/mr-review.md` (gathers MR context) | [gitlab-org/ai/skills](https://gitlab.com/gitlab-org/ai/skills/-/blob/main/skills/glab/SKILL.md?ref_type=heads) |
 | `browser-tools` | skill | `prompts/debug.md` (replicate frontend workflow in a browser) | [badlogic/pi-skills](https://github.com/badlogic/pi-skills) (Mario Zechner) |
-| `questionnaire` | extension | `skills/grill-me/SKILL.md` (structured question batches) | [earendil-works/pi examples](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/questionnaire.ts) |
 
 I re-use these "as is" or with only minor modifications, so they are not
 included here. Install them through their own sources.
