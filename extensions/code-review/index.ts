@@ -21,7 +21,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Message } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -53,7 +53,7 @@ function shortenPath(p: string): string {
   return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
 }
 
-function formatToolCall(toolName: string, args: Record<string, unknown>, fg: (color: string, text: string) => string): string {
+function formatToolCall(toolName: string, args: Record<string, unknown>, fg: (color: ThemeColor, text: string) => string): string {
   switch (toolName) {
     case "bash": {
       const command = (args.command as string) || "...";
@@ -138,12 +138,15 @@ function resolveModel(paramsModel?: string, configModel?: string): { model: stri
 
 function getFinalOutput(messages: Message[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "assistant") {
-      const texts = messages[i].content
-        .filter((part): part is { type: "text"; text: string } => part.type === "text")
-        .map((part) => part.text);
-      if (texts.length > 0) return texts.join("\n");
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    const content = msg.content;
+    if (!Array.isArray(content)) continue;
+    const texts: string[] = [];
+    for (const part of content) {
+      if (part.type === "text") texts.push(part.text);
     }
+    if (texts.length > 0) return texts.join("\n");
   }
   return "";
 }
@@ -241,6 +244,7 @@ export default function (pi: ExtensionAPI) {
       if (!fs.existsSync(promptPath)) {
         return {
           content: [{ type: "text", text: `Reviewer prompt not found: ${promptPath}` }],
+          details: {},
           isError: true,
         };
       }
@@ -483,7 +487,7 @@ export default function (pi: ExtensionAPI) {
 
       // Status line: running -> hourglass, error -> cross, success -> tick
       const isRunning = details?.running === true;
-      const isError = !isRunning && (result.isError || (details?.exitCode && details.exitCode !== 0));
+      const isError = !isRunning && ((result as { isError?: boolean }).isError || (details?.exitCode && details.exitCode !== 0));
       const icon = isRunning
         ? theme.fg("warning", "\u23f3")
         : isError

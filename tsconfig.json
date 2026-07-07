@@ -9,5 +9,5 @@
     "allowImportingTsExtensions": true
   },
   "include": ["lib/**/*.ts", "extensions/**/*.ts"],
-  "exclude": ["node_modules", "extensions/code-review"]
+  "exclude": ["node_modules"]
 }

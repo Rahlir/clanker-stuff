@@ -68,10 +68,14 @@ The existing `extensions/` in this repo are the closest style reference for Type
 ## Verification
 
 Run `npm run type-check` (`tsc --noEmit` against `tsconfig.json`) after editing any
-extension or `lib/` module. It covers `lib/**` and `extensions/**` with `strict`,
-bundler resolution, and `allowImportingTsExtensions` (matching how pi loads the
-`.ts` files). `extensions/code-review` is currently excluded in `tsconfig.json`
-because it has pre-existing type errors; drop that exclude once they're fixed.
+extension or `lib/` module. It covers all of `lib/**` and `extensions/**` with
+`strict`, bundler resolution, and `allowImportingTsExtensions` (matching how pi
+loads the `.ts` files), and the whole repo is expected to stay green.
+
+Use the `npm run type-check` script, not a bare `tsc` with file arguments: passing
+files on the command line makes tsc ignore `tsconfig.json` (including its
+`noEmit`), which can drop stray compiled `.js` next to the sources. (Those are
+gitignored under `lib/`/`extensions/` as a safety net, but avoid creating them.)
 
 There is still no `npm test` or lint. Type-check is static only — after editing an
 extension, also load it in pi with `/reload` and exercise it manually, since the
