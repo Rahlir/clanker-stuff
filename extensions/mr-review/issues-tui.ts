@@ -55,7 +55,6 @@ function renderDetail(issue: Issue, theme: Theme, width: number): string[] {
 	lines.push(...wrapBlock(issue.summary, theme, width, "text"));
 	if (issue.details.trim()) {
 		lines.push("");
-		lines.push(theme.fg("dim", " context"));
 		lines.push(...wrapBlock(issue.details, theme, width, "muted"));
 	}
 	lines.push("");
