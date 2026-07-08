@@ -33,7 +33,11 @@ State persists across restarts; re-running `/mr-review` on the same MR resumes.
 
 ## Commands
 
-- `/mr-review <MR>` — start or resume a review
+- `/mr-review <MR> [focus/context]` — start or resume a review. Any text after the
+  MR number is passed to the agent as extra reviewer focus/context: appended to
+  the kickoff for a fresh review, or sent as a steering message when resuming.
+  Use `/mr-review <MR> --context` to compose longer/multi-line context in an
+  editor (seeded with any text after the flag).
 - `/mr-issues` — browse the full issue list in a scrollable view
 - `/mr-post` — preview and post approved notes
 - `/mr-reset` — clear the current review
@@ -45,6 +49,11 @@ them all. Long note text in the draft/annotate screens is soft-wrapped so it is
 never cut off (the posted note keeps its original line breaks).
 
 ## Tools (agent-callable)
+
+These tools are **gated to an active review**: they're only in the agent's active
+tool set between `/mr-review` and `/mr-reset`, so the agent can't reach for them
+during unrelated work (e.g. a general `/review`). Outside a review they aren't
+registered as callable and cost no prompt tokens.
 
 - `register_mr_issue(severity, summary, details, file?, startLine?, endLine?)`
 - `draft_mr_note(issueId, body)`

@@ -33,6 +33,9 @@ import { issueWidgetFactory } from "./widget.ts";
 
 const WIDGET_ID = "mr-review";
 const STATE_TYPE = "mr-review";
+// Tools gated to an active review (see setToolsActive) so the agent can't call
+// them during unrelated work like a general /review.
+const MR_TOOLS = ["register_mr_issue", "draft_mr_note", "update_mr_issue", "post_mr_review"];
 
 function getExtensionDir(): string {
 	return path.dirname(fileURLToPath(import.meta.url));
@@ -57,7 +60,7 @@ function loadRubric(): string {
 	return "";
 }
 
-function buildKickoff(mr: string): string {
+function buildKickoff(mr: string, extraContext?: string): string {
 	const rubric = loadRubric();
 	const instructions = `Review GitLab merge request #${mr}.
 
@@ -77,7 +80,11 @@ If I tell you about an issue I found, call register_mr_issue for it (when you ag
 
 When the issues are addressed, call post_mr_review (or I will run /mr-post) to post the approved notes.`;
 
-	return rubric ? `${rubric}\n\n---\n\n${instructions}` : instructions;
+	const base = rubric ? `${rubric}\n\n---\n\n${instructions}` : instructions;
+	if (extraContext?.trim()) {
+		return `${base}\n\n---\n\nAdditional focus / context from the reviewer for this MR:\n${extraContext.trim()}`;
+	}
+	return base;
 }
 
 const SEVERITY = StringEnum(["critical", "major", "minor"] as const);
@@ -101,6 +108,24 @@ export default function mrReview(pi: ExtensionAPI): void {
 		} else {
 			ctx.ui.setWidget(WIDGET_ID, undefined);
 		}
+	}
+
+	// Keep the MR tools out of the active set unless a review is in progress, so the
+	// agent can't reach for them during unrelated work (e.g. a general /review).
+	// Preserves other extensions' / built-in tools.
+	function setToolsActive(enabled: boolean): void {
+		const active = new Set(pi.getActiveTools());
+		let changed = false;
+		for (const tool of MR_TOOLS) {
+			if (enabled && !active.has(tool)) {
+				active.add(tool);
+				changed = true;
+			} else if (!enabled && active.has(tool)) {
+				active.delete(tool);
+				changed = true;
+			}
+		}
+		if (changed) pi.setActiveTools([...active]);
 	}
 
 	function okResult(text: string, details?: Record<string, unknown>) {
@@ -181,23 +206,43 @@ export default function mrReview(pi: ExtensionAPI): void {
 			store.load(last.data);
 		}
 		refreshWidget(ctx);
+		setToolsActive(store.hasReview());
 	});
 
 	// ── Commands ─────────────────────────────────────────────────────────
 	pi.registerCommand("mr-review", {
-		description: "Start or resume a tracked review of a GitLab MR",
+		description:
+			"Start/resume a tracked GitLab MR review. Usage: /mr-review <MR> [focus/context], or /mr-review <MR> --context to compose longer context in an editor",
 		handler: async (args, ctx) => {
-			const mr = (args ?? "").trim().split(/\s+/)[0];
+			const [mr, ...rest] = (args ?? "").trim().split(/\s+/);
 			if (!mr) {
-				ctx.ui.notify("Usage: /mr-review <MR-number>", "error");
+				ctx.ui.notify("Usage: /mr-review <MR> [focus/context]", "error");
 				return;
 			}
 
-			// Same MR -> always resume (never re-kick), even mid-kickoff with 0
-			// issues yet; a deliberate restart goes through /mr-reset first.
+			// Extra reviewer context: inline trailing text, or `--context` to open an
+			// editor (prefilled with any text after the flag) for longer/multi-line input.
+			let extraContext: string;
+			if (rest[0] === "--context") {
+				const composed = await ctx.ui.editor(`Extra focus / context for MR #${mr}`, rest.slice(1).join(" ").trim());
+				extraContext = (composed ?? "").trim();
+			} else {
+				extraContext = rest.join(" ").trim();
+			}
+
+			// Same MR -> resume (never re-kick). If extra context was given, steer the
+			// ongoing review with it instead of dropping it.
 			if (store.hasReview() && store.activeMr === mr) {
 				refreshWidget(ctx);
-				ctx.ui.notify(`Resumed review of MR #${mr} (${store.list().length} issues).`, "info");
+				setToolsActive(true);
+				if (extraContext) {
+					const steer = `Additional focus / context for the ongoing review of MR #${mr}:\n\n${extraContext}`;
+					if (ctx.isIdle()) pi.sendUserMessage(steer);
+					else pi.sendUserMessage(steer, { deliverAs: "steer" });
+					ctx.ui.notify(`Resumed review of MR #${mr} (${store.list().length} issues); added your context.`, "info");
+				} else {
+					ctx.ui.notify(`Resumed review of MR #${mr} (${store.list().length} issues).`, "info");
+				}
 				return;
 			}
 
@@ -210,9 +255,10 @@ export default function mrReview(pi: ExtensionAPI): void {
 			}
 
 			store.start(mr);
+			setToolsActive(true);
 			persist();
 			refreshWidget(ctx);
-			pi.sendUserMessage(buildKickoff(mr));
+			pi.sendUserMessage(buildKickoff(mr, extraContext));
 		},
 	});
 
@@ -245,6 +291,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 			}
 			const mr = store.activeMr;
 			store.reset();
+			setToolsActive(false);
 			persist();
 			refreshWidget(ctx);
 			ctx.ui.notify(`Cleared review of MR #${mr}.`, "info");
@@ -256,7 +303,10 @@ export default function mrReview(pi: ExtensionAPI): void {
 		name: "register_mr_issue",
 		label: "Register MR Issue",
 		description:
-			"Register an issue found during MR review into the tracked list. Silent (no UI). Provide file + startLine (and endLine for a range) when the issue is tied to specific lines; those drive inline diff comments. Omit them for a general MR note.",
+			"Part of the /mr-review workflow; only available during an active review. Register an issue found during MR review into the tracked list. Silent (no UI). Provide file + startLine (and endLine for a range) when the issue is tied to specific lines; those drive inline diff comments. Omit them for a general MR note.",
+		promptGuidelines: [
+			"register_mr_issue and the other mr-review tools belong to the /mr-review MR-review workflow only. Do not use them for general code review that isn't posting findings to a GitLab MR.",
+		],
 		parameters: Type.Object({
 			severity: SEVERITY,
 			summary: Type.String({ description: "Short one-line summary shown in the issue list" }),
@@ -289,7 +339,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		name: "draft_mr_note",
 		label: "Draft MR Note",
 		description:
-			"Open the review TUI for a registered issue with a proposed note body. Write the body with semantic line breaks (one short sentence or point per line, or markdown bullets) rather than one long paragraph, so it reads well when posted and the user can annotate individual lines. The user can approve, annotate (returns structured feedback to revise and resubmit), edit, reject, or skip. Call this one issue at a time when the user wants to go through the list.",
+			"Part of the /mr-review workflow. Open the review TUI for a registered issue with a proposed note body. Write the body with semantic line breaks (one short sentence or point per line, or markdown bullets) rather than one long paragraph, so it reads well when posted and the user can annotate individual lines. The user can approve, annotate (returns structured feedback to revise and resubmit), edit, reject, or skip. Call this one issue at a time when the user wants to go through the list.",
 		parameters: Type.Object({
 			issueId: Type.Number({ description: "Id of the registered issue (see the issue list)" }),
 			body: Type.String({ description: "Proposed reviewer-style comment to post for this issue" }),
@@ -350,7 +400,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		name: "update_mr_issue",
 		label: "Update MR Issue",
 		description:
-			"Edit a registered issue or change its state. Use state 'rejected' to dismiss an issue or 'open' to reopen one. Reopening clears the drafted note AND the posted record, so if the issue was already posted, re-posting may create a second comment on GitLab when the new body differs. The 'commented' state is reached only through draft_mr_note approval.",
+			"Part of the /mr-review workflow. Edit a registered issue or change its state. Use state 'rejected' to dismiss an issue or 'open' to reopen one. Reopening clears the drafted note AND the posted record, so if the issue was already posted, re-posting may create a second comment on GitLab when the new body differs. The 'commented' state is reached only through draft_mr_note approval.",
 		parameters: Type.Object({
 			issueId: Type.Number({ description: "Id of the issue to update" }),
 			severity: Type.Optional(SEVERITY),
@@ -387,7 +437,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		name: "post_mr_review",
 		label: "Post MR Review",
 		description:
-			"Open the confirm + preview screen for the approved (queued) notes and post them to the MR via glab. Call when the issues have been addressed.",
+			"Part of the /mr-review workflow. Open the confirm + preview screen for the approved (queued) notes and post them to the MR via glab. Call when the issues have been addressed.",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			if (!ctx.hasUI) return errResult("post_mr_review requires an interactive UI.");
