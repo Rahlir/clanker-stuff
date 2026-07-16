@@ -1,13 +1,13 @@
 ---
-description: Create conventional commit for a squash commit
-argument-hint: "<changes in the squash commit>"
+description: Create conventional commit for a squash commit when merging to main
 ---
 
-Create a git commit message following the Conventional Commits 1.0.0 specification for the following changes: $@
+Create a git commit message following the Conventional Commits 1.0.0
+specification for the squash commit that will be used when merging this branch
+to `main`.
 
-This commit message will be used for a squash commit when merging.
-
-Format:
+You should use this format:
+```
   <type>[optional scope]: <description>
 
   [optional body]
@@ -15,6 +15,7 @@ Format:
   [optional footer(s)]
 
   Changelog: <gitlab changelog type>
+```
 
 Rules:
 - type MUST be one of: feat, fix, build, chore, ci, docs, style, refactor, perf, test, revert
@@ -29,6 +30,7 @@ Rules:
 - Ensure every line is wrapped to 72 chars
 
 Examples:
+
 ```
 feat(auth): add OAuth2 login support
 
