@@ -1,6 +1,6 @@
 {
   "name": "clanker-stuff",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Rahlir's personal collection of AI-agent workflow assets: prompts, skills, and pi extensions and themes.",
   "keywords": [
     "pi-package",
