@@ -77,6 +77,21 @@ files on the command line makes tsc ignore `tsconfig.json` (including its
 `noEmit`), which can drop stray compiled `.js` next to the sources. (Those are
 gitignored under `lib/`/`extensions/` as a safety net, but avoid creating them.)
 
-There is still no `npm test` or lint. Type-check is static only — after editing an
+`npm test` runs the unit/integration suite via Node's built-in runner (`node
+--test`, no framework or transpiler: Node runs the `.test.ts` files and their
+`.ts`-extension imports natively). Test files are colocated as `*.test.ts` next
+to their sources, so `tsconfig` already type-checks them. There is still no lint.
+
+What is tested, and what is not: unit and integration tests target the
+dependency-free "pure core" only, i.e. modules that import at most `import type`
+from pi. Logic worth testing gets extracted behind such a pure export (the
+pattern the repo already follows: `lib/shell-tokens.ts`, `mr-review/state.ts`,
+`format.ts`, `glab.ts`'s `buildNoteArgs`, the guards' exported `analyzeCommand`).
+The guards' behavior is covered by fixture corpora over `analyzeCommand`; a
+single inline smoke test per guard checks that the extension factory registers a
+blocking `tool_call` hook (and, for cd-guard, threads `ctx.cwd`). Do NOT boot the
+pi runtime (or a live model) inside tests.
+
+Type-check plus tests are still static/headless only — after editing an
 extension, also load it in pi with `/reload` and exercise it manually, since the
-TUI/runtime behavior can't be type-checked.
+TUI/runtime behavior can't be covered here.
