@@ -47,6 +47,7 @@ import {
 	memoryFileHeader,
 	parseEntries,
 	STORE_DIR_NAME,
+	stripGeneratedHeader,
 } from "./store.ts";
 
 const MESSAGE_TYPE = "memory";
@@ -227,12 +228,17 @@ export default function memory(pi: ExtensionAPI): void {
 		const details: InjectedDetails = {
 			path: displayPath,
 			entryCount: entries.length,
+			// Digest the raw file: the question it answers on resume is "did the file
+			// change", not "did the injected text change".
 			digest: contentDigest(content),
 			refreshed,
 		};
 		pi.sendMessage({
 			customType: MESSAGE_TYPE,
-			content: buildInjectedMessage(loadPreamble(), content, { path: displayPath, refreshed }),
+			content: buildInjectedMessage(loadPreamble(), stripGeneratedHeader(content), {
+				path: displayPath,
+				refreshed,
+			}),
 			display: true,
 			details,
 		});

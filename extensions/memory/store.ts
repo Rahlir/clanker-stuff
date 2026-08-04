@@ -126,6 +126,22 @@ Format, one entry per line, newest last:
 `;
 }
 
+/**
+ * Drop the boilerplate header from the copy sent to the model. The header
+ * orients a human opening the file; every line of it is already in the
+ * preamble, and it would otherwise sit inside the injected block that is
+ * supposed to hold nothing but lessons.
+ *
+ * Exact match only, so a hand-written file (a team-shared `.pi/memory.md`,
+ * say) never matches and its prose still reaches the model. Editing the
+ * boilerplate likewise makes it yours, and it starts being injected.
+ */
+export function stripGeneratedHeader(content: string): string {
+	const header = memoryFileHeader().trim();
+	const leading = content.trimStart();
+	return leading.startsWith(header) ? leading.slice(header.length).trimStart() : content;
+}
+
 const REFRESH_NOTE =
 	"This is a refreshed copy of the project memory (the file changed, or earlier context was compacted away). It supersedes any earlier memory block in this conversation.";
 

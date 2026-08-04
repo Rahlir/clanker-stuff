@@ -22,6 +22,7 @@ import {
 	normalizeLesson,
 	parseEntries,
 	SIZE_WARN_BYTES,
+	stripGeneratedHeader,
 } from "./store.ts";
 
 test("encodeRootKey mirrors pi's session directory encoding", () => {
@@ -98,6 +99,21 @@ test("buildInjectedMessage wraps content with the preamble and path", () => {
 	const msg = buildInjectedMessage("PREAMBLE", "- 2026-07-25: a\n", { path: "~/mem/memory.md" });
 	assert.match(msg, /^PREAMBLE\n\n<project-memory path="~\/mem\/memory\.md">\n- 2026-07-25: a\n<\/project-memory>$/);
 	assert.doesNotMatch(msg, /supersedes/);
+});
+
+test("the generated header is stripped from the copy sent to the model", () => {
+	const file = appendEntry(memoryFileHeader(), "- 2026-07-25: first");
+	assert.equal(stripGeneratedHeader(file), "- 2026-07-25: first\n");
+});
+
+test("prose that is not the generated header still reaches the model", () => {
+	// A team-shared .pi/memory.md opens with context that is the point of the file.
+	const team = "# Team conventions\n\nScope: billing service only.\n\n- 2026-07-25: first\n";
+	assert.equal(stripGeneratedHeader(team), team);
+
+	// Editing the boilerplate makes it the user's prose, so it is kept.
+	const edited = appendEntry(memoryFileHeader().replace("Project memory", "Billing memory"), "- 2026-07-25: a");
+	assert.equal(stripGeneratedHeader(edited), edited);
 });
 
 test("a quote in the path cannot break the project-memory tag", () => {

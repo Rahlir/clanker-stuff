@@ -40,13 +40,20 @@ The file is then either:
 - YYYY-MM-DD: <one-line lesson in imperative voice>
 ```
 
-Newest last, append-only in normal use. Anything else in the file (header,
-notes, headings) is preserved verbatim and ignored by the parser.
+Newest last, append-only in normal use. Anything else in the file (notes,
+headings) is preserved verbatim and ignored by the parser.
+
+The one exception is the boilerplate header written when the file is created.
+It orients a human opening the file, and every line of it is already in the
+preamble, so it is stripped before injection rather than spending context every
+session. The match is exact: a hand-written file (a team-shared `.pi/memory.md`
+with real scope notes, say) never matches and its prose does reach the model,
+and editing the boilerplate makes it yours, at which point it is injected too.
 
 ## Injection
 
 At session start the extension injects one custom message: a protocol preamble
-plus the file verbatim. It renders as a single dim line in the transcript
+plus the file's entries. It renders as a single dim line in the transcript
 (`memory 12 lessons ~/.pi/agent/memory/...`); ctrl+o expands it.
 
 A fresh copy is re-injected, marked as superseding earlier ones, when:
