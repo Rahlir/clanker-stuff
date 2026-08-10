@@ -113,16 +113,23 @@ beyond the status value itself, that explanation belongs in the new
 superseding ADR, the index, or the commit message - never in the
 predecessor's body.
 
+Immutability protects the **decision record**, not the markup. Fixing a
+typo, a broken link, a stale cross-reference, or a code-fence language tag
+so a snippet actually highlights does not touch what was decided and needs
+no supersession - just fix it in place. The test: would the edit change
+what a reader believes was decided, argued, or chosen? If yes, it's
+substance - supersede. If no, it's mechanical - edit it directly.
+
 When you supersede an ADR:
 
 1. Write the new ADR as a fresh file. Link to the predecessor in `References`.
 2. Update the predecessor's frontmatter `status` to `superseded by ADR-NNNN`.
 3. Do not edit the predecessor's body.
 
-When you change an accepted ADR's substance (not just typos), you are
-almost always actually writing a new ADR that supersedes it. The bar for
-in-place edits is "the original wording was wrong about what was decided",
-not "the decision evolved".
+When you change an accepted ADR's substance (not typos or other mechanical
+fixes), you are almost always actually writing a new ADR that supersedes
+it. The bar for in-place edits is "the original wording was wrong about
+what was decided", not "the decision evolved".
 
 ## Index file
 
@@ -208,8 +215,11 @@ Reject these whether you are writing or reviewing an ADR:
 - **Pre-decided options.** A "Considered Options" section with only one
   serious entry and a strawman is theatre. Either rejected options got
   real consideration, or this ADR is not ready.
-- **Mutable accepted ADRs.** Once accepted, the body is historical
-  record. Edits beyond typos require superseding.
+- **Mutable accepted ADRs.** Once accepted, the body's substance is
+  historical record and edits to it require superseding. Mechanical fixes
+  that don't change what was decided (typos, broken links, code-fence
+  language tags, other rendering/formatting) are not substance and don't
+  need it.
 - **Cross-ADR sprawl.** If you find yourself writing "see ADR-001, -002,
   -003, -004" within a single decision, the ADRs are probably overlapping.
   Consider whether one of them should be superseded by a consolidating ADR.
