@@ -31,3 +31,10 @@ what thinking level has generated it.
 
 Save your report to `~/.pi/agent/sessions/pi-session-report-{date}.html` where
 `date` is the current date in the format `YYYY-MM-DD`.
+
+What to focus on in your analysis: **outcomes and productivity**. De-emphasize
+cost as the primary criteria for evaluating my workflow. I simply don't care
+about cost that much. It's fine to suggest ways to lower the session cost or to
+point out when I am consistently "throwing money against the wall" when I could
+achieve the same outcomes at lower cost. But I care much more about outcomes
+and productivity, so that should be the primary criteria in your analysis.
