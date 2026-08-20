@@ -1,20 +1,23 @@
 # pi Code Review Extension
 
-A `pi` extension that adds a `code_review` tool. The tool launches a separate
-read-only `pi` subprocess to review your current changes and return structured
-findings by severity.
+A `pi` extension for reviewing your current changes with a separate read-only
+`pi` subprocess that returns structured findings by severity. Reviews block until
+they finish by default, or run in the background (`wait: false`) so the agent can
+keep working, including several at once for multi-model review.
 
 The reviewer can inspect files and run read-only commands such as `git diff`,
 `git status`, linters, and type checkers. It cannot use write or edit tools.
 
 ## What it does
 
-- Registers a `code_review` tool for the main agent.
-- Runs the review in an isolated `pi` subprocess with a dedicated reviewer
+- Registers `code_review` plus `code_review_await`, `code_review_status`, and
+  `code_review_cancel` for the main agent (see [Tools](#tools)).
+- Runs each review in an isolated `pi` subprocess with a dedicated reviewer
   prompt.
 - Limits the reviewer to read-only tools: `read`, `grep`, `find`, `ls`, and
   `bash`.
-- Streams reviewer activity in the TUI while the review is running.
+- Streams reviewer activity in the TUI while a review is running, and lists
+  detached background reviews in a widget above the editor.
 - Returns findings in this structure:
   - Critical, must fix
   - Major, should fix
@@ -71,7 +74,7 @@ package instead. The extension resolves configuration with this precedence
 2. Environment variables `CODE_REVIEW_MODEL`, `CODE_REVIEW_THINKING`
 3. User config file `${XDG_CONFIG_HOME:-$HOME/.config}/pi-clanker/code-review.json`
 4. Bundled `config.json`
-5. Hardcoded fallback (`claude-sonnet-4-6`, no thinking)
+5. Hardcoded fallback (`openai-codex/gpt-5.4`, no thinking)
 
 The user config file uses the same shape as the bundled default:
 
@@ -104,7 +107,7 @@ The extension re-reads configuration every time `code_review` runs, so changes
 do not require `/reload`.
 
 If no model is provided in the tool call, env, or any config file, the extension
-falls back to `claude-sonnet-4-6` and shows a warning.
+falls back to `openai-codex/gpt-5.4` and shows a warning.
 
 ## Usage
 
@@ -122,6 +125,28 @@ Use the code review subagent to review the recent changes. I updated the retry l
 
 The main agent is instructed to call `code_review` only when you explicitly ask for the tool or subagent. A normal request like "review this code" may be handled directly by the main agent instead.
 
+## Tools
+
+The blocking default preserves the original workflow: one `code_review` call
+starts the subprocess, streams progress, and returns the report. The other three
+tools exist for the async workflow, all keyed by a job id (`cr-1`, `cr-2`, ...).
+
+| Tool | Blocks? | Purpose |
+|---|---|---|
+| `code_review` | Yes, unless `wait: false` | Start a review. Blocking returns the report; `wait: false` returns a job id immediately and runs it in the background. |
+| `code_review_await` | Yes | Block until a background review finishes and return its report. Esc detaches and leaves it running (it does not stop it). |
+| `code_review_status` | No | Report a background review's state, or list all reviews in the session. Not for polling in a loop. |
+| `code_review_cancel` | No | Stop a running background review and discard its result. |
+
+To review with several models at once, issue multiple `code_review` calls in one
+message (they run concurrently), or start each with `wait: false` and collect
+them with `code_review_await`. At most four reviews run concurrently; further
+starts are rejected until one is collected or cancelled. Background reviews are
+in-memory only: reloading, switching, or quitting the session kills their
+subprocesses and forgets their job ids. Once collected, a finished review's result
+is eventually dropped from the registry (the newest 20 collected results are
+kept); uncollected results are retained until you await or check them.
+
 ## Tool parameters
 
 The extension exposes these parameters to pi:
@@ -132,6 +157,10 @@ The extension exposes these parameters to pi:
 | `focus` | No | Optional focus area, such as `security`, `performance`, or `error handling`. |
 | `model` | No | Model override for this review. Defaults to `config.json`. |
 | `thinking` | No | Thinking-level override for this review. Defaults to `config.json`. |
+| `wait` | No | Whether to block until the review finishes. Defaults to `true`; set `false` to run it in the background and collect it later with `code_review_await`. |
+
+`code_review_await` and `code_review_cancel` take a required `jobId`;
+`code_review_status` takes an optional `jobId` (omit to list all reviews).
 
 ## How the review subprocess runs
 
