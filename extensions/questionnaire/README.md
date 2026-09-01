@@ -9,8 +9,8 @@ plain text.
 
 - Registers a `questionnaire` tool the LLM can call during any agent turn.
 - **Single question:** renders a compact, scrollable option list.
-- **Multiple questions:** renders a tab bar — one tab per question plus a Submit
-  tab — so you can answer in any order and review before confirming.
+- **Multiple questions:** renders a tab bar (one tab per question plus a Submit
+  tab), so you can answer in any order and review before confirming.
 - Supports a **"Type something"** option on every question, which opens an
   inline text editor for free-form answers.
 - Returns answers to the LLM with each question's id, the selected label and
@@ -40,7 +40,7 @@ Review my auth changes, but check with me first on scope and focus.
 ```
 
 ```text
-I want to refactor the payment module — ask me a few questions before diving in.
+I want to refactor the payment module, ask me a few questions before diving in.
 ```
 
 The tool is especially useful alongside skills or prompts that conduct
@@ -71,7 +71,7 @@ The LLM calls `questionnaire` with a `questions` array. Each question has:
 |-------|----------|-------------|
 | `id` | Yes | Unique identifier for this question; returned with the answer |
 | `prompt` | Yes | Full question text shown in the UI |
-| `options` | Yes | List of choices — each has `value`, `label`, and optional `description` |
+| `options` | Yes | List of choices; each has `value`, `label`, and optional `description` |
 | `label` | No | Short tab-bar label, e.g. `"Scope"` (defaults to `Q1`, `Q2`, …) |
 | `allowOther` | No | Include a "Type something" free-text option (default: `true`) |
 

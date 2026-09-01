@@ -5,7 +5,7 @@ description: Query Figma files via REST API. Use when the user pastes a figma.co
 
 # Figma
 
-Use this skill to pull design context from Figma into implementation work. The common case is grounding code in the design — comparing implementation against a wireframe, applying the correct brand colors and spacing, or checking how a component should look. Less commonly, the user asks for a specific data lookup like "what value is the variable X". Either way, the user supplies a figma.com URL; fetch what's needed via `./figma.mjs` and apply it. All operations are read-only.
+Use this skill to pull design context from Figma into implementation work. The common case is grounding code in the design: comparing implementation against a wireframe, applying the correct brand colors and spacing, or checking how a component should look. Less commonly, the user asks for a specific data lookup like "what value is the variable X". Either way, the user supplies a figma.com URL; fetch what's needed via `./figma.mjs` and apply it. All operations are read-only.
 
 ## Required setup
 

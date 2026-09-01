@@ -18,14 +18,14 @@ test -n "$CONFLUENCE_URL" && test -n "$CONFLUENCE_TOKEN" && scripts/confluence.m
 
 - If it succeeds, the token is valid and the helper works.
 - If either env var is unset, stop and tell the user to add both to `~/.profile` or `~/.zprofile`:
-  - `CONFLUENCE_URL` — base URL of the instance, e.g. `https://wiki.example.com`
-  - `CONFLUENCE_TOKEN` — Personal Access Token, created in Confluence under profile picture → Settings → Personal Access Tokens
+  - `CONFLUENCE_URL`: base URL of the instance, e.g. `https://wiki.example.com`
+  - `CONFLUENCE_TOKEN`: Personal Access Token, created in Confluence under profile picture → Settings → Personal Access Tokens
 - Do not export the variables or edit shell profiles yourself.
 - A TLS error mentioning `NODE_EXTRA_CA_CERTS` means the instance uses a corporate CA; tell the user to export `NODE_EXTRA_CA_CERTS=/path/to/ca.pem` themselves.
 
 ## Page references
 
-Every command that takes a page accepts a bare numeric page id or any Server/DC URL form — the helper resolves all of these itself, **never resolve them manually**:
+Every command that takes a page accepts a bare numeric page id or any Server/DC URL form; the helper resolves all of these itself, **never resolve them manually**:
 
 - `.../pages/viewpage.action?pageId=123456`
 - `.../display/SPACE/Page+Title`
@@ -44,7 +44,7 @@ No URL and no id → search by title first (`search "title words" --type page`),
 scripts/confluence.mjs page <url|id>
 ```
 
-Prints metadata (space, version, labels, ancestor path) and the body converted to markdown. Bodies longer than ~200 lines are written in full to `/tmp/pi-confluence-skill/<id>.md` with the path printed — use the `read` tool with offset for the rest. Macro placeholders like `[macro: drawio]` or `[image: x.png]` mean the actual content is an attachment; see pattern 4.
+Prints metadata (space, version, labels, ancestor path) and the body converted to markdown. Bodies longer than ~200 lines are written in full to `/tmp/pi-confluence-skill/<id>.md` with the path printed, so use the `read` tool with offset for the rest. Macro placeholders like `[macro: drawio]` or `[image: x.png]` mean the actual content is an attachment; see pattern 4.
 
 ### 2. Search
 
@@ -87,7 +87,7 @@ scripts/confluence.mjs attachments <url|id>            # list with type/size
 scripts/confluence.mjs attachment <url|id> <filename>  # download to /tmp/pi-confluence-skill/
 ```
 
-Downloaded images can be viewed with the `read` tool. Draw.io diagrams attach both the source (`<name>`) and a rendered `<name>.png` — download the PNG.
+Downloaded images can be viewed with the `read` tool. Draw.io diagrams attach both the source (`<name>`) and a rendered `<name>.png`; download the PNG.
 
 ### 5. Read the discussion
 
@@ -115,11 +115,11 @@ Threads are flattened; each comment shows author, timestamp, and id.
 
 ## NEVER
 
-- **NEVER write to Confluence.** This skill is read-only. Do not compose REST calls outside `confluence.mjs`, and do not POST/PUT even if the user's instance would allow it — write support is a planned, separate addition.
+- **NEVER write to Confluence.** This skill is read-only. Do not compose REST calls outside `confluence.mjs`, and do not POST/PUT even if the user's instance would allow it; write support is a planned, separate addition.
 - **NEVER guess page ids or space keys.** Parse from URLs, search, or ask.
 - **NEVER export `CONFLUENCE_TOKEN`/`CONFLUENCE_URL` or edit shell profiles** without explicit permission.
 - **NEVER dump entire pages into the reply** when the user asked a specific question.
-- **NEVER refetch a page already converted in the current turn** — large pages persist at `/tmp/pi-confluence-skill/<id>.md`.
+- **NEVER refetch a page already converted in the current turn**; large pages persist at `/tmp/pi-confluence-skill/<id>.md`.
 
 ## Out of scope
 

@@ -85,7 +85,7 @@ export default function annotate(pi: ExtensionAPI): void {
 					);
 				case "reject":
 					return okResult(
-						"User rejected this draft as off-base \u2014 it is not what they wanted. Do not tweak it; step back and ask what they actually want, or redraft from scratch.",
+						"User rejected this draft as off-base; it is not what they wanted. Do not tweak it; step back and ask what they actually want, or redraft from scratch.",
 					);
 				default:
 					return okResult("User dismissed the review without deciding. Ask how they would like to proceed.");

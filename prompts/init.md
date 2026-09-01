@@ -3,7 +3,7 @@ description: Interactively set up AGENTS.md and skills for this repo, written to
 argument-hint: "[fast|review|fresh]"
 ---
 
-Set up a minimal AGENTS.md (and optionally skills) for this repo. AGENTS.md is loaded into every agent session, so it must be concise — only include what an agent would get wrong **about this repo** without it.
+Set up a minimal AGENTS.md (and optionally skills) for this repo. AGENTS.md is loaded into every agent session, so it must be concise: only include what an agent would get wrong **about this repo** without it.
 
 The argument $1, if present, pre-answers Phase 1:
 - `fast` → "Let pi decide" path (skip questions, propose everything, ask only for approval)
@@ -13,7 +13,7 @@ The argument $1, if present, pre-answers Phase 1:
 
 ## Phase 0: Check for an existing AGENTS.md
 
-Before asking anything, run `cat ./AGENTS.md` (and also `cat ./CLAUDE.md` if AGENTS.md doesn't exist — pi reads both, and a CLAUDE.md left by another tool is informative). Only the project-root file counts here. Don't explore the tree yet. The result branches Phase 1.
+Before asking anything, run `cat ./AGENTS.md` (and also `cat ./CLAUDE.md` if AGENTS.md doesn't exist, since pi reads both and a CLAUDE.md left by another tool is informative). Only the project-root file counts here. Don't explore the tree yet. The result branches Phase 1.
 
 Do **not** read `~/.pi/agent/AGENTS.md` or any other global agent file at any point during Phases 0-6. The generated file must be written for a reader with no global context. Phase 7 reads the global, and only for redundancy reporting.
 
@@ -50,7 +50,7 @@ prompt: "What should /init set up?"
 options:
   - value: "agents_md", label: "AGENTS.md only",     description: "Just the repo's persistent agent instructions."
   - value: "with_skills", label: "AGENTS.md + skills", description: "Also propose repo-specific skills for repeatable workflows."
-  - value: "let_pi",    label: "Let pi decide",      description: "Fastest path — propose AGENTS.md plus any skills that fit. You'll approve everything before it's written."
+  - value: "let_pi",    label: "Let pi decide",      description: "Fastest path: propose AGENTS.md plus any skills that fit. You'll approve everything before it's written."
 ```
 
 `let_pi` is the same as `with_skills` plus "skip Phase 3's gap-fill questions; propose directly from Phase 2 findings."
@@ -69,19 +69,19 @@ Survey the repo using `bash` (rg, fd, cat) and `read`. Read the obvious manifest
 
 Detect and record:
 
-- **Build, test, lint, type-check, and format commands** — read the actual scripts in `package.json`/`pyproject.toml`/`Makefile`/etc. Capture the exact command strings (including workspace flags like `pnpm --filter web`, `nx run`, `cargo -p`, `go work`).
+- **Build, test, lint, type-check, and format commands**: read the actual scripts in `package.json`/`pyproject.toml`/`Makefile`/etc. Capture the exact command strings (including workspace flags like `pnpm --filter web`, `nx run`, `cargo -p`, `go work`).
 - **Pre-steps required before checks pass** (codegen, proto generation, schema build, required env vars or `.env` setup).
-- **Monorepo / workspace layout** — what packages exist, which one runs which checks.
-- **Languages, frameworks, package manager** (only as far as needed to write the file; don't list these explicitly in AGENTS.md — they're obvious from the manifest).
+- **Monorepo / workspace layout**: what packages exist, which one runs which checks.
+- **Languages, frameworks, package manager** (only as far as needed to write the file; don't list these explicitly in AGENTS.md, they're obvious from the manifest).
 - **Branch / PR / commit conventions** if discoverable from CI or templates.
-- **Non-obvious gotchas** — things that would trip a stranger reading the code cold.
-- **What the code does NOT reveal** — these become Phase 3 questions.
+- **Non-obvious gotchas**: things that would trip a stranger reading the code cold.
+- **What the code does NOT reveal**: these become Phase 3 questions.
 
 **Do not read `~/.pi/agent/AGENTS.md` or `~/.agents/` files.** The repo's own files are the only source of truth for what the generated AGENTS.md should contain.
 
 ## Phase 3: Fill in the gaps
 
-Use `questionnaire` to ask only what the code can't answer. Skip this phase entirely on the `let_pi` path. On the `review` path, ask only one question: *"Has anything changed about how the team works since this AGENTS.md was written (new conventions, commands, gotchas)?"* with options `"No — nothing's changed"` | `"Yes — let me describe"` (free text via the "Type something" option).
+Use `questionnaire` to ask only what the code can't answer. Skip this phase entirely on the `let_pi` path. On the `review` path, ask only one question: *"Has anything changed about how the team works since this AGENTS.md was written (new conventions, commands, gotchas)?"* with options `"No, nothing's changed"` | `"Yes, let me describe"` (free text via the "Type something" option).
 
 Otherwise, ask 1-3 focused questions at most. Examples:
 - Non-obvious commands the code hints at but doesn't fully document (e.g., "do you run the full test suite or just one package most of the time?")
@@ -92,17 +92,17 @@ Do not mark options as "recommended". This is about how the team actually works,
 
 **Then synthesize a proposal.** For each item, pick the artifact type that fits:
 
-- **AGENTS.md note** — guidance that shapes agent behavior (conventions, commands, gotchas).
-- **Skill** — an on-demand multi-step workflow worth its own `/skill:name` (e.g., a release process, a deep-verify routine, a session-report format).
+- **AGENTS.md note**: guidance that shapes agent behavior (conventions, commands, gotchas).
+- **Skill**: an on-demand multi-step workflow worth its own `/skill:name` (e.g., a release process, a deep-verify routine, a session-report format).
 
 Print the proposal as normal assistant text, one bullet per item:
 
 > Here's what I'd set up:
-> • **AGENTS.md** — [one-line summary of what it will cover]
-> • **Skill: `<name>`** — [one-line purpose]
+> • **AGENTS.md**: [one-line summary of what it will cover]
+> • **Skill: `<name>`**: [one-line purpose]
 > • …
 
-Then call `questionnaire` once: prompt `"Does this look right?"`, options including `"Looks good — proceed"`, `"Drop <skill name>"` for each skill in the proposal, and rely on the auto-added "Type something" for free-text tweaks.
+Then call `questionnaire` once: prompt `"Does this look right?"`, options including `"Looks good, proceed"`, `"Drop <skill name>"` for each skill in the proposal, and rely on the auto-added "Type something" for free-text tweaks.
 
 Build a preference queue from the accepted proposal: `[{type, name, description, target_file, source_details}]`. Phase 4 consumes the AGENTS.md notes; Phase 5 consumes the skill entries.
 
@@ -110,7 +110,7 @@ Build a preference queue from the accepted proposal: `[{type, name, description,
 
 Skip this phase entirely on the `leave` path.
 
-On the `review` path: read the existing file, compare against Phase 2 findings and the Phase 3-lite answer, and propose specific additions and removals as a diff with a one-line reason for each. Print the diff, then call `questionnaire`: `"Apply these edits?"` with options `"Apply all"` | `"Let me pick which"` | `"Skip — leave it as is"`. Do not write until approved.
+On the `review` path: read the existing file, compare against Phase 2 findings and the Phase 3-lite answer, and propose specific additions and removals as a diff with a one-line reason for each. Print the diff, then call `questionnaire`: `"Apply these edits?"` with options `"Apply all"` | `"Let me pick which"` | `"Skip, leave it as is"`. Do not write until approved.
 
 On the `fresh` / `agents_md` / `with_skills` / `let_pi` paths: write a minimal AGENTS.md at the project root.
 
@@ -118,9 +118,9 @@ On the `fresh` / `agents_md` / `with_skills` / `let_pi` paths: write a minimal A
 
 > "Would removing this line cause an agent to make a mistake **about this repo**?"
 
-This is scoped to the repo. Generic agent-hygiene rules ("use fd over find", "never use em dashes", "be concise") do **not** belong here — they belong in a teammate's personal global file, not in a committed repo file. Repo-specific commands (exact `npm`/`pnpm`/`cargo`/`make` invocations) **do** belong here even if your personal global already prescribes the pattern, because the file must be useful to teammates whose global says nothing.
+This is scoped to the repo. Generic agent-hygiene rules ("use fd over find", "never use em dashes", "be concise") do **not** belong here; they belong in a teammate's personal global file, not in a committed repo file. Repo-specific commands (exact `npm`/`pnpm`/`cargo`/`make` invocations) **do** belong here even if your personal global already prescribes the pattern, because the file must be useful to teammates whose global says nothing.
 
-**Write the file for a stranger.** Spell out commands. Don't write "the usual checks" — write `pnpm --filter web type-check && pnpm --filter web lint`.
+**Write the file for a stranger.** Spell out commands. Don't write "the usual checks"; write `pnpm --filter web type-check && pnpm --filter web lint`.
 
 Include:
 - **Non-obvious build / test / lint / type-check / format commands** with workspace flags and pre-steps. Skip standard, manifest-obvious commands (`npm test`, `cargo test`, `pytest` with no flags).
@@ -140,7 +140,7 @@ After editing code, run the narrowest relevant static checks:
 
 - <type-check command>
 - <lint command>
-- <test command — only if running tests is cheap and expected per change>
+- <test command, only if running tests is cheap and expected per change>
 ```
 
 If the project's checks are exactly what the manifest implies (`npm test`, `pytest`, `cargo test` with no flags or pre-steps), omit this section. Note that omission for the Phase 6 summary.
@@ -178,7 +178,7 @@ For each skill, create `.agents/skills/<name>/SKILL.md`:
 ```yaml
 ---
 name: <name>
-description: <what it does and when to invoke it — be specific>
+description: <what it does and when to invoke it, be specific>
 ---
 
 <Instructions for the agent>
@@ -206,7 +206,7 @@ Then add a short to-do list of *optional* follow-ups, only including items that 
 - If `gh` is missing AND the repo is on GitHub: suggest installing it.
 - If no lint config was found for the project's primary language: suggest setting one up.
 - If tests are missing or sparse: suggest setting up a test framework so the agent can verify its own changes.
-- If you need *enforcement* (not just advice — e.g., compliance, security gates): mention that AGENTS.md is advisory; hard gates need a git pre-commit hook, CI, or a pi extension.
+- If you need *enforcement* (not just advice, e.g. compliance or security gates): mention that AGENTS.md is advisory; hard gates need a git pre-commit hook, CI, or a pi extension.
 
 ## Phase 7: Redundancy report
 
@@ -218,11 +218,11 @@ Print the overlaps as a single block:
 
 > The following lines in the new AGENTS.md duplicate guidance already in your personal global (`~/.pi/agent/AGENTS.md`):
 >
-> - `<line or section>` — already covered by global: `<short paraphrase>`
+> - `<line or section>` is already covered by global: `<short paraphrase>`
 > - …
 >
-> The default is to **keep them** — that makes this file useful to teammates whose global says nothing. Trim them only if this AGENTS.md will stay private (e.g., it won't be committed, or your team is small enough that everyone has the same global).
+> The default is to **keep them**, which makes this file useful to teammates whose global says nothing. Trim them only if this AGENTS.md will stay private (e.g., it won't be committed, or your team is small enough that everyone has the same global).
 
 Do **not** offer to auto-trim. Leave the edit to the user.
 
-If there are no overlaps, print one line: `No overlap with your personal global — the file is fully repo-specific.` and stop.
+If there are no overlaps, print one line: `No overlap with your personal global; the file is fully repo-specific.` and stop.

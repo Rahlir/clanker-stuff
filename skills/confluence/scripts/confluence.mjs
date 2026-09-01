@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// confluence — read-only Confluence Server/DC REST helper for the `confluence` pi skill.
+// confluence - read-only Confluence Server/DC REST helper for the `confluence` pi skill.
 //
 // Subcommands: me, page, search, children, spaces, comments, attachments, attachment.
 // Page references may be a bare numeric id or any DC page URL form
@@ -24,7 +24,7 @@ function die(msg, code = 1) {
 }
 
 function help() {
-	process.stdout.write(`confluence — Confluence Server/DC REST helper (read-only)
+	process.stdout.write(`confluence - Confluence Server/DC REST helper (read-only)
 
 Commands:
   me                                Authenticated user / token check
@@ -161,7 +161,7 @@ async function resolvePageId(input) {
 		return hit.id;
 	}
 
-	// Tiny link: /x/AbCd — follow the redirect and re-parse the target.
+	// Tiny link: /x/AbCd; follow the redirect and re-parse the target.
 	m = input.match(/\/x\/([A-Za-z0-9_-]+)/);
 	if (m) {
 		const res = await rawFetch(`${BASE}/x/${m[1]}`, { redirect: "manual" });

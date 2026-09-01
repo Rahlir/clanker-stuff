@@ -8,7 +8,7 @@ A pi package containing extensions, skills, prompts, and themes for the `pi` cod
 
 ## Asset layout and auto-discovery
 
-`package.json` uses globs that auto-discover new directories in the right place — **no edits to `package.json` are needed** when adding new assets:
+`package.json` uses globs that auto-discover new directories in the right place: **no edits to `package.json` are needed** when adding new assets:
 
 | Asset | Add here | Required file |
 |-------|----------|---------------|
@@ -45,7 +45,7 @@ turns a leftover concurrent open into a clear error instead of a silent hang.
 
 ## Extensions: no build step
 
-pi loads TypeScript extensions directly — there is no compile step. After editing `index.ts`, run `/reload` in pi to pick up the change.
+pi loads TypeScript extensions directly; there is no compile step. After editing `index.ts`, run `/reload` in pi to pick up the change.
 
 ## Extension config: do not edit bundled files
 
@@ -64,7 +64,7 @@ pi loads TypeScript extensions directly — there is no compile step. After edit
 
 > This section applies only when running inside `pi`. Other agents should skip it.
 
-Before designing anything, read recent session logs to see how the workflow plays out in practice — tool choices, phrasing patterns, points of friction.
+Before designing anything, read recent session logs to see how the workflow plays out in practice: tool choices, phrasing patterns, points of friction.
 
 **Session logs** for the current working directory:
 
@@ -72,7 +72,7 @@ Before designing anything, read recent session logs to see how the workflow play
 ~/.pi/agent/sessions/-$(echo "$(pwd)/" | tr '/' '-')-/
 ```
 
-Each session is a `.jsonl` file. Lines with `"type": "message"` hold the conversation; `role` is `user`, `assistant`, or `toolResult`; text lives in `content[].text` blocks. The same formula works for any directory — useful when a skill targets a workflow in a different repo.
+Each session is a `.jsonl` file. Lines with `"type": "message"` hold the conversation; `role` is `user`, `assistant`, or `toolResult`; text lives in `content[].text` blocks. The same formula works for any directory, which is useful when a skill targets a workflow in a different repo.
 
 **pi SDK and docs** for extension authoring (`docs/`, `examples/extensions/`):
 
@@ -109,6 +109,6 @@ single inline smoke test per guard checks that the extension factory registers a
 blocking `tool_call` hook (and, for cd-guard, threads `ctx.cwd`). Do NOT boot the
 pi runtime (or a live model) inside tests.
 
-Type-check plus tests are still static/headless only — after editing an
+Type-check plus tests are still static/headless only, so after editing an
 extension, also load it in pi with `/reload` and exercise it manually, since the
 TUI/runtime behavior can't be covered here.

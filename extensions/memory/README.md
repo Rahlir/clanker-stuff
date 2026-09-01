@@ -106,9 +106,9 @@ pruning is a judgement call, so it never nags the model.
 
 ## Layout
 
-- `store.ts` — pure string core (key encoding, entry parse/format, duplicate
+- `store.ts`: pure string core (key encoding, entry parse/format, duplicate
   and size checks, message assembly). No fs, git, or pi imports; unit tested in
   `store.test.ts`.
-- `index.ts` — all IO: git root resolution, file reads/writes, hooks, tool,
+- `index.ts`: all IO, i.e. git root resolution, file reads/writes, hooks, tool,
   command, renderer. Root resolution is exported and tested against real temp
   repos in `root.test.ts`.

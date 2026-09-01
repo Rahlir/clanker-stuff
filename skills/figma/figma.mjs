@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// figma — read-only Figma REST helper for the `figma` pi skill.
+// figma - read-only Figma REST helper for the `figma` pi skill.
 //
 // Subcommands: me, info, node, vars, styles, components, image.
 // All commands accept a Figma URL or bare file key. URL ?node-id= is
@@ -22,7 +22,7 @@ function die(msg, code = 1) {
 }
 
 function help() {
-	process.stdout.write(`figma — Figma REST helper
+	process.stdout.write(`figma - Figma REST helper
 
 Commands:
   me                                       Authenticated user / token check
@@ -310,7 +310,7 @@ async function cmdVars(args, flags) {
 				const val = v.valuesByMode[m.modeId];
 				const formatted =
 					val === undefined
-						? "—"
+						? "-"
 						: fmtVarValue(val, v.resolvedType, variables);
 				return `${m.name} ${formatted}`;
 			});
@@ -334,7 +334,7 @@ async function cmdStyles(args, flags) {
 		out.push(`${type} (${list.length}):`);
 		for (const s of list) {
 			const desc = s.description
-				? `  — ${s.description.slice(0, 60)}`
+				? `  - ${s.description.slice(0, 60)}`
 				: "";
 			out.push(`  ${s.node_id}  ${s.name}${desc}`);
 		}
@@ -361,7 +361,7 @@ async function cmdComponents(args, flags) {
 		out.push(`Component sets (${setList.length}):`);
 		for (const s of setList) {
 			const desc = s.description
-				? `  — ${s.description.slice(0, 60)}`
+				? `  - ${s.description.slice(0, 60)}`
 				: "";
 			out.push(`  ${s.node_id}  ${s.name}${desc}`);
 		}

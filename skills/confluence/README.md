@@ -75,5 +75,5 @@ Run `scripts/confluence.mjs --help` for the full inline reference.
 
 ## Files
 
-- `SKILL.md` — agent-facing instructions and task patterns.
-- `scripts/confluence.mjs` — the read-only REST helper (Node.js, no dependencies).
+- `SKILL.md`: agent-facing instructions and task patterns.
+- `scripts/confluence.mjs`: the read-only REST helper (Node.js, no dependencies).
