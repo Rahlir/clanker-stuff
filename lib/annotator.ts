@@ -19,6 +19,16 @@
  * Esc is always an escape hatch: it resolves to `skip` even when "skip" is not
  * in the visible action set, so callers should always handle the skip outcome.
  *
+ * Single instance at a time: pi's ctx.ui.custom has no mutual exclusion. Two
+ * components opened concurrently both take over the editor container, the second
+ * steals focus, and the first's promise never settles - that tool call hangs for
+ * the rest of the session. Tools that call openAnnotator must therefore declare
+ * `executionMode: "sequential"`, which makes pi run the whole tool batch one call
+ * at a time instead of concurrently. openAnnotator additionally holds the shared
+ * lock from lib/ui-lock.ts, so a caller that forgets gets an error instead of a
+ * hang; the lock is held across the ctx.ui.editor round-trip too, since that
+ * dialog takes over the same container.
+ *
  * Viewport safety: pi's differential renderer degrades to full-screen repaints
  * (heavy flicker) when a component emits more lines than the terminal height,
  * because changes then land above the viewport. So the component NEVER emits
@@ -37,6 +47,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import { withUiLock } from "./ui-lock.ts";
 
 export type AnnotatorAction = "approve" | "annotate" | "edit" | "reject" | "skip";
 
@@ -84,6 +95,8 @@ interface Annotation {
 const BUBBLE = "\u{1F4AC}"; // 💬 (two terminal columns wide)
 const ANNOTATION_INDENT = "        "; // 8 cols: marker+space+lineNo(3)+space+bar+space, aligns under line text
 const DEFAULT_ACTIONS: AnnotatorAction[] = ["approve", "annotate", "edit", "reject", "skip"];
+// Doubles as the header title and the lock owner label, so both stay in sync.
+const DEFAULT_TITLE = "Review";
 // Rows kept clear below the component (pi's footer is pwd + stats + an optional
 // extension-status line = up to 3). The component fits within
 // terminal.rows - FOOTER_RESERVE so per-keypress changes stay inside the
@@ -123,30 +136,32 @@ function helpBar(enabled: Set<AnnotatorAction>): string {
  */
 export async function openAnnotator(ctx: ExtensionContext, options: AnnotatorOptions): Promise<AnnotationResult> {
 	const editTitle = options.editTitle ?? "Edit";
-	// Suppress the animated "working" spinner while the review UI is open. It is
-	// rendered ABOVE our component; when the annotation is tall enough to push it
-	// above the viewport, its ~10Hz animation forces full-screen redraws (the
-	// heavy flicker). It is also misleading here — we are waiting on the user, not
-	// working. Restored in finally so it resumes for later agent work.
-	ctx.ui.setWorkingVisible(false);
-	try {
-		while (true) {
-			const res = await runComponent(ctx, options);
-			if (res.action !== "edit") return res;
+	return withUiLock(options.title ?? DEFAULT_TITLE, async (): Promise<AnnotationResult> => {
+		// Suppress the animated "working" spinner while the review UI is open. It is
+		// rendered ABOVE our component; when the annotation is tall enough to push it
+		// above the viewport, its ~10Hz animation forces full-screen redraws (the
+		// heavy flicker). It is also misleading here; we are waiting on the user, not
+		// working. Restored in finally so it resumes for later agent work.
+		ctx.ui.setWorkingVisible(false);
+		try {
+			while (true) {
+				const res = await runComponent(ctx, options);
+				if (res.action !== "edit") return res;
 
-			const edited = await ctx.ui.editor(editTitle, options.body);
-			// Cancelled (undefined) or cleared to blank: treat both as a no-op and drop
-			// back into the review screen unchanged rather than returning empty text.
-			if (edited == null || edited.trim() === "") continue;
-			return { action: "edit", body: edited };
+				const edited = await ctx.ui.editor(editTitle, options.body);
+				// Cancelled (undefined) or cleared to blank: treat both as a no-op and drop
+				// back into the review screen unchanged rather than returning empty text.
+				if (edited == null || edited.trim() === "") continue;
+				return { action: "edit", body: edited };
+			}
+		} finally {
+			ctx.ui.setWorkingVisible(true);
 		}
-	} finally {
-		ctx.ui.setWorkingVisible(true);
-	}
+	});
 }
 
 function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise<ComponentResult> {
-	const title = options.title ?? "Review";
+	const title = options.title ?? DEFAULT_TITLE;
 	const bodyLabel = options.bodyLabel;
 	const enabled = new Set(options.actions ?? DEFAULT_ACTIONS);
 

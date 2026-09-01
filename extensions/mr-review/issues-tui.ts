@@ -21,6 +21,7 @@ import {
 	type TUI,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import { withUiLock } from "../../lib/ui-lock.ts";
 import { locationLabel, severityColor, stateView } from "./format.ts";
 import type { Issue, ReviewStore } from "./state.ts";
 
@@ -69,6 +70,11 @@ export function openIssueList(ctx: ExtensionContext, store: ReviewStore): Promis
 		return Promise.resolve();
 	}
 
+	// Exclusive while on screen; see lib/ui-lock.ts.
+	return withUiLock("MR issue list", () => runComponent(ctx, store));
+}
+
+function runComponent(ctx: ExtensionContext, store: ReviewStore): Promise<void> {
 	return ctx.ui.custom<void>((tui: TUI, theme: Theme, _kb, done) => {
 		let detailId: number | null = null;
 

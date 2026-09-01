@@ -91,6 +91,13 @@ reason about your choices precisely.
 If you cancel, the tool reports `"User cancelled the questionnaire"` and the
 agent typically asks you what you would like to do next.
 
+## One at a time
+
+The tool is declared `executionMode: "sequential"` and takes the shared lock in
+`lib/ui-lock.ts`, so it can never render alongside another interactive UI (a
+second one would evict the first and hang whoever was waiting on it). A
+concurrent call fails with a clear error instead.
+
 ## Non-interactive mode
 
 The tool requires an interactive terminal. When pi runs in non-interactive mode

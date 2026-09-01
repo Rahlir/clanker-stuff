@@ -50,6 +50,9 @@ export default function annotate(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use annotate_text when you have drafted substantial content the user will want to refine (a Jira ticket, a note, a doc section, a message) and you want their structured feedback before finalizing. Do not use it for trivial replies.",
 		],
+		// Serialize the whole tool batch: ctx.ui.custom has no mutual exclusion, so a
+		// second concurrent component steals focus and hangs the first call forever.
+		executionMode: "sequential",
 		parameters: Type.Object({
 			body: Type.String({ description: "The drafted text to review" }),
 			title: Type.Optional(Type.String({ description: "Short header title, e.g. 'Draft Jira ticket'" })),

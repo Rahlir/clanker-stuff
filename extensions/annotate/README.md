@@ -8,14 +8,14 @@ Jira tickets, personal notes, docs, commit messages, messages, etc.
 
 ## Tool
 
-`annotate_text(body, title?, subtitle?, context?)` — opens a review of the
+`annotate_text(body, title?, subtitle?, context?)` opens a review of the
 drafted text. You can:
 
-- **approve** — use it as-is
-- **annotate** — attach per-line / per-line-range comments plus an overall note;
+- **approve**: use it as-is
+- **annotate**: attach per-line / per-line-range comments plus an overall note;
   these return to the agent as structured feedback to revise against
-- **edit** — open a full editor and rewrite it yourself
-- **reject** — it's off-base; the agent should step back / redraft, not tweak
+- **edit**: open a full editor and rewrite it yourself
+- **reject**: it's off-base; the agent should step back / redraft, not tweak
 
 The agent calls this after drafting content, incorporates your feedback (calling
 `annotate_text` again until you approve), and then performs the actual action
@@ -24,7 +24,7 @@ extension only runs the review loop; it never finalizes anything itself.
 
 ## Command
 
-`/annotate-last` — annotate the agent's last message. Attach annotations (sent
+`/annotate-last` annotates the agent's last message. Attach annotations (sent
 back as feedback) or edit it (sent back as "use this version instead"). Esc
 cancels without sending anything.
 
@@ -34,3 +34,10 @@ The TUI lives in `lib/annotator.ts` as `openAnnotator(ctx, options)`, a neutral
 module that registers nothing. Other extensions import it directly to embed the
 same annotation loop in their own workflows (see `mr-review`, which uses it for
 per-issue note review with its own state and posting on top).
+
+Only one interactive UI can be on screen at a time: pi's `ctx.ui.custom`,
+`ctx.ui.editor` and `ctx.ui.confirm` share one container, and a second one evicts
+the first, whose promise then never settles. So a tool that opens any of them
+**must** declare `executionMode: "sequential"` (as `annotate_text` does), and
+`openAnnotator` takes the process-wide lock in `lib/ui-lock.ts` so a caller that
+forgets gets an error instead of a hung call.

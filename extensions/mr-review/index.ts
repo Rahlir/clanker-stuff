@@ -340,6 +340,9 @@ export default function mrReview(pi: ExtensionAPI): void {
 		label: "Draft MR Note",
 		description:
 			"Part of the /mr-review workflow. Open the review TUI for a registered issue with a proposed note body. Write the body with semantic line breaks (one short sentence or point per line, or markdown bullets) rather than one long paragraph, so it reads well when posted and the user can annotate individual lines. The user can approve, annotate (returns structured feedback to revise and resubmit), edit, reject, or skip. Call this one issue at a time when the user wants to go through the list.",
+		// Serialize the whole tool batch: ctx.ui.custom has no mutual exclusion, so a
+		// second concurrent component steals focus and hangs the first call forever.
+		executionMode: "sequential",
 		parameters: Type.Object({
 			issueId: Type.Number({ description: "Id of the registered issue (see the issue list)" }),
 			body: Type.String({ description: "Proposed reviewer-style comment to post for this issue" }),
@@ -438,6 +441,8 @@ export default function mrReview(pi: ExtensionAPI): void {
 		label: "Post MR Review",
 		description:
 			"Part of the /mr-review workflow. Open the confirm + preview screen for the approved (queued) notes and post them to the MR via glab. Call when the issues have been addressed.",
+		// Same reason as draft_mr_note: two TUIs open at once hang the first caller.
+		executionMode: "sequential",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			if (!ctx.hasUI) return errResult("post_mr_review requires an interactive UI.");

@@ -9,6 +9,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import { withUiLock } from "../../lib/ui-lock.ts";
 import { severityColor } from "./format.ts";
 import type { Severity } from "./state.ts";
 
@@ -21,6 +22,11 @@ export interface PreviewItem {
 }
 
 export function openPostConfirm(ctx: ExtensionContext, items: PreviewItem[]): Promise<number[] | null> {
+	// Exclusive while on screen; see lib/ui-lock.ts.
+	return withUiLock("MR post preview", () => runComponent(ctx, items));
+}
+
+function runComponent(ctx: ExtensionContext, items: PreviewItem[]): Promise<number[] | null> {
 	return ctx.ui.custom<number[] | null>((tui, theme, _kb, done) => {
 		let cursor = 0;
 		const selected = new Set(items.map((i) => i.id));

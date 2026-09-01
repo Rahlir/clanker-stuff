@@ -8,6 +8,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { withUiLock } from "../../lib/ui-lock.ts";
 
 // Types
 interface QuestionOption {
@@ -79,6 +80,9 @@ export default function questionnaire(pi: ExtensionAPI) {
 		label: "Questionnaire",
 		description:
 			"Ask the user one or more questions. Use for clarifying requirements, getting preferences, or confirming decisions. For single questions, shows a simple option list. For multiple questions, shows a tab-based interface.",
+		// Serialize the whole tool batch: ctx.ui.custom has no mutual exclusion, so a
+		// second concurrent component steals focus and hangs the first call forever.
+		executionMode: "sequential",
 		parameters: QuestionnaireParams,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -99,7 +103,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 			const isMulti = questions.length > 1;
 			const totalTabs = questions.length + 1; // questions + Submit
 
-			const result = await ctx.ui.custom<QuestionnaireResult>((tui, theme, _kb, done) => {
+			const runComponent = () => ctx.ui.custom<QuestionnaireResult>((tui, theme, _kb, done) => {
 				// State
 				let currentTab = 0;
 				let optionIndex = 0;
@@ -381,6 +385,9 @@ export default function questionnaire(pi: ExtensionAPI) {
 					handleInput,
 				};
 			});
+
+			// Exclusive while on screen; see lib/ui-lock.ts.
+			const result = await withUiLock("Questionnaire", runComponent);
 
 			if (result.cancelled) {
 				return {

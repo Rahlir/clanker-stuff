@@ -33,14 +33,14 @@ State persists across restarts; re-running `/mr-review` on the same MR resumes.
 
 ## Commands
 
-- `/mr-review <MR> [focus/context]` — start or resume a review. Any text after the
+- `/mr-review <MR> [focus/context]`: start or resume a review. Any text after the
   MR number is passed to the agent as extra reviewer focus/context: appended to
   the kickoff for a fresh review, or sent as a steering message when resuming.
   Use `/mr-review <MR> --context` to compose longer/multi-line context in an
   editor (seeded with any text after the flag).
-- `/mr-issues` — browse the full issue list in a scrollable view
-- `/mr-post` — preview and post approved notes
-- `/mr-reset` — clear the current review
+- `/mr-issues`: browse the full issue list in a scrollable view
+- `/mr-post`: preview and post approved notes
+- `/mr-reset`: clear the current review
 
 The issue widget above the editor auto-sizes to the terminal: it uses the full
 width for summaries and shows as many issues as fit the viewport height. When
@@ -59,6 +59,14 @@ registered as callable and cost no prompt tokens.
 - `draft_mr_note(issueId, body)`
 - `update_mr_issue(issueId, { severity?, summary?, details?, file?, lines?, state? })`
 - `post_mr_review()`
+
+`draft_mr_note` and `post_mr_review` are declared `executionMode: "sequential"`,
+which makes pi run their whole tool batch one call at a time. Without it, an
+agent that fires several `draft_mr_note` calls in one message opens several TUIs
+at once; the last one steals focus and the earlier calls hang forever. The issue
+list and post-preview screens additionally take the shared lock in
+`lib/ui-lock.ts`, which covers the case `executionMode` cannot: `/mr-issues` or
+`/mr-post` fired while a note TUI is already open.
 
 ## Rubric override
 

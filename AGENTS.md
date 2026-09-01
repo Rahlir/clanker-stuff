@@ -26,6 +26,23 @@ not match it, so pi never auto-loads it, but it ships with the package. Extensio
 import it by relative path (`../../lib/<name>.ts`). Prefer this over one extension
 reaching into another's files, so extensions don't depend on each other.
 
+A `lib/` module is **not a singleton**: pi loads every extension through its own
+jiti instance with the module cache disabled, so each importing extension gets a
+separate copy. Module-level state is therefore per-extension. State that must be
+shared process-wide has to live on `globalThis` under a `Symbol.for` key (see
+`lib/ui-lock.ts`).
+
+## Interactive UI: one at a time
+
+pi's `ctx.ui.custom`, `ctx.ui.editor`, `ctx.ui.confirm` and `ctx.ui.select` all
+clear and repopulate the same editor container. A second one opened while the
+first is up evicts the first from the component tree, so the evicted component
+never receives the keystroke that resolves it and its promise stays pending for
+the rest of the session. Any tool that opens UI must declare
+`executionMode: "sequential"` (which forces its whole tool batch to run one call
+at a time) and should run the UI inside `withUiLock` from `lib/ui-lock.ts`, which
+turns a leftover concurrent open into a clear error instead of a silent hang.
+
 ## Extensions: no build step
 
 pi loads TypeScript extensions directly — there is no compile step. After editing `index.ts`, run `/reload` in pi to pick up the change.
