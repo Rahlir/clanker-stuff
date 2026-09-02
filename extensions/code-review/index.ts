@@ -760,6 +760,7 @@ export default function (pi: ExtensionAPI) {
       "code_review returns issues categorized as Critical, Major, or Minor. Do not fix issues unless the user explicitly asks you to.",
       "To review with several models at once, issue multiple code_review calls in one message (they run concurrently), or start each with wait=false and collect them with code_review_await.",
       "Use code_review with wait=false only when you have other work to do while the review runs; otherwise keep the default blocking behavior.",
+      "Only set focus for a specific subsystem or concern the task text doesn't already cover (e.g. 'race conditions in the job queue', 'SQL injection in the auth handler'). Generic terms like 'correctness' or 'security' add nothing since the reviewer already checks those by default, and focus cannot suppress report sections: all severities are always reported regardless of what focus says.",
     ],
     parameters: Type.Object({
       task: Type.String({
@@ -768,7 +769,8 @@ export default function (pi: ExtensionAPI) {
       }),
       focus: Type.Optional(
         Type.String({
-          description: 'Optional focus area for the review, e.g. "security", "error handling".',
+          description:
+            'Optional narrow area to scrutinize beyond the default review, e.g. "race conditions in the job queue", "SQL injection in the auth handler". Avoid generic terms like "correctness" or "security" alone; the reviewer checks those by default. This does not filter the output: all severity sections are always reported regardless of focus.',
         }),
       ),
       model: Type.Optional(
