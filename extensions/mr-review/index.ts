@@ -110,6 +110,23 @@ export default function mrReview(pi: ExtensionAPI): void {
 		}
 	}
 
+	/**
+	 * Run a docked interactive surface with the issue widget hidden.
+	 *
+	 * The widget shares pi's fullscreen bottom dock with these screens, and the dock
+	 * clips over-tall entries at the bottom - exactly where their help bars live.
+	 * Not needed for the annotator, which floats above the dock in its own overlay;
+	 * hiding the widget there would only add two pointless dock reflows.
+	 */
+	async function withWidgetHidden<T>(ctx: ExtensionContext, open: () => Promise<T>): Promise<T> {
+		ctx.ui.setWidget(WIDGET_ID, undefined);
+		try {
+			return await open();
+		} finally {
+			refreshWidget(ctx);
+		}
+	}
+
 	// Keep the MR tools out of the active set unless a review is in progress, so the
 	// agent can't reach for them during unrelated work (e.g. a general /review).
 	// Preserves other extensions' / built-in tools.
@@ -160,7 +177,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 			body: i.note ?? "",
 		}));
 
-		const selected = await openPostConfirm(ctx, items);
+		const selected = await withWidgetHidden(ctx, () => openPostConfirm(ctx, items));
 		if (selected === null) return { status: "cancelled", message: "Posting cancelled.", hadFailures: false };
 		if (selected.length === 0) {
 			return { status: "cancelled", message: "Posting cancelled (no notes selected).", hadFailures: false };
@@ -278,7 +295,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 	pi.registerCommand("mr-issues", {
 		description: "Browse the full issue list of the current MR review",
 		handler: async (_args, ctx) => {
-			await openIssueList(ctx, store);
+			await withWidgetHidden(ctx, () => openIssueList(ctx, store));
 		},
 	});
 

@@ -14,27 +14,29 @@
  * Manual full-text editing happens OUTSIDE the component via ctx.ui.editor (a
  * native multi-line dialog); the component returns { action: "edit" } and the
  * wrapper re-enters. This keeps multi-line editing out of the custom component,
- * where Enter is needed for actions.
+ * where Enter is needed for actions. ctx.ui.editor has no overlay form, so this
+ * step drops from the floating overlay to pi's dock dialog and back.
  *
  * Esc is always an escape hatch: it resolves to `skip` even when "skip" is not
  * in the visible action set, so callers should always handle the skip outcome.
  *
  * Single instance at a time: pi's ctx.ui.custom has no mutual exclusion. Two
- * components opened concurrently both take over the editor container, the second
- * steals focus, and the first's promise never settles - that tool call hangs for
- * the rest of the session. Tools that call openAnnotator must therefore declare
+ * components opened concurrently fight over focus: the second one wins and the
+ * first's promise never settles, so that tool call hangs for the rest of the
+ * session. Tools that call openAnnotator must therefore declare
  * `executionMode: "sequential"`, which makes pi run the whole tool batch one call
  * at a time instead of concurrently. openAnnotator additionally holds the shared
  * lock from lib/ui-lock.ts, so a caller that forgets gets an error instead of a
- * hang; the lock is held across the ctx.ui.editor round-trip too, since that
- * dialog takes over the same container.
+ * hang; the lock covers the ctx.ui.editor round-trip too, since that dialog
+ * takes focus as well.
  *
- * Viewport safety: pi's differential renderer degrades to full-screen repaints
- * (heavy flicker) when a component emits more lines than the terminal height,
- * because changes then land above the viewport. So the component NEVER emits
- * more than the viewport: fixed chrome (border/header/help) is pinned, the
- * middle (context/body/annotations) scrolls, the cursor is kept in view, and a
- * final clamp guarantees the total fits even on tiny terminals.
+ * Rendered as a centered overlay in both TUI modes: in fullscreen it floats over
+ * the transcript instead of squashing the bottom dock, and in regular mode the
+ * composited frame is exactly terminal height, so an over-tall component can no
+ * longer degrade pi's renderer into full-screen repaints. pi clips an overlay
+ * past its maxHeight, so the component still budgets itself: chrome is pinned,
+ * the middle (context/body/annotations) scrolls, and the cursor is kept in view.
+ * Cost: pi refuses to switch TUI mode while an overlay is open.
  */
 
 import type { ExtensionContext, ThemeColor } from "@earendil-works/pi-coding-agent";
@@ -43,11 +45,13 @@ import {
 	type EditorTheme,
 	Key,
 	matchesKey,
+	type OverlayOptions,
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { withUiLock } from "./ui-lock.ts";
+import { clampToBudget, moreIndicator, windowLines } from "./viewport.ts";
 
 export type AnnotatorAction = "approve" | "annotate" | "edit" | "reject" | "skip";
 
@@ -97,12 +101,22 @@ const ANNOTATION_INDENT = "        "; // 8 cols: marker+space+lineNo(3)+space+ba
 const DEFAULT_ACTIONS: AnnotatorAction[] = ["approve", "annotate", "edit", "reject", "skip"];
 // Doubles as the header title and the lock owner label, so both stay in sync.
 const DEFAULT_TITLE = "Review";
-// Rows kept clear below the component (pi's footer is pwd + stats + an optional
-// extension-status line = up to 3). The component fits within
-// terminal.rows - FOOTER_RESERVE so per-keypress changes stay inside the
-// viewport. This is a hard ceiling, never a floor: on tiny terminals the budget
-// shrinks with the window rather than overflowing it.
-const FOOTER_RESERVE = 3;
+// Sized in percentages so pi re-resolves the box on terminal resize; the function
+// form of overlayOptions would be evaluated once at open time instead. minWidth
+// only bites below ~75 columns, where pi clamps back to the full width anyway.
+const OVERLAY_WIDTH_PCT = 80;
+const OVERLAY_HEIGHT_PCT = 90;
+const OVERLAY_OPTIONS: OverlayOptions = {
+	width: `${OVERLAY_WIDTH_PCT}%`,
+	minWidth: 60,
+	maxHeight: `${OVERLAY_HEIGHT_PCT}%`,
+	anchor: "center",
+};
+
+/** Rows the overlay box allows. Mirrors how pi resolves a percentage SizeValue. */
+function overlayBudget(rows: number): number {
+	return Math.max(1, Math.floor((rows * OVERLAY_HEIGHT_PCT) / 100));
+}
 
 function snippet(text: string): string {
 	const t = text.trim();
@@ -137,11 +151,8 @@ function helpBar(enabled: Set<AnnotatorAction>): string {
 export async function openAnnotator(ctx: ExtensionContext, options: AnnotatorOptions): Promise<AnnotationResult> {
 	const editTitle = options.editTitle ?? "Edit";
 	return withUiLock(options.title ?? DEFAULT_TITLE, async (): Promise<AnnotationResult> => {
-		// Suppress the animated "working" spinner while the review UI is open. It is
-		// rendered ABOVE our component; when the annotation is tall enough to push it
-		// above the viewport, its ~10Hz animation forces full-screen redraws (the
-		// heavy flicker). It is also misleading here; we are waiting on the user, not
-		// working. Restored in finally so it resumes for later agent work.
+		// The spinner is misleading while the review is up: we are waiting on the user,
+		// not working. Restored in finally so it resumes for later agent work.
 		ctx.ui.setWorkingVisible(false);
 		try {
 			while (true) {
@@ -234,7 +245,7 @@ function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise
 			if (enabled.has("edit") && data === "e") return done({ action: "edit" });
 			if (enabled.has("reject") && data === "r") return done({ action: "reject" });
 			if (enabled.has("skip") && data === "s") return done({ action: "skip" });
-			// Free scroll for long body/context (windowMiddle clamps the offset).
+			// Free scroll for long body/context (windowLines clamps the offset).
 			if (matchesKey(data, Key.up)) {
 				scroll = Math.max(0, scroll - 1);
 				refresh();
@@ -321,41 +332,26 @@ function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise
 		}
 
 		/**
-		 * Window the scrollable middle to `budget` rows, following `cursorRow` when
-		 * given. Reserves two rows for "N more" indicators when clipped, so the
-		 * returned length is always <= budget. Mutates `scroll` (cursor-follow /
-		 * clamp).
-		 */
-		function windowMiddle(middle: string[], budget: number, cursorRow: number | null): string[] {
-			if (budget <= 0) return [];
-			if (middle.length <= budget) {
-				scroll = 0;
-				return middle;
-			}
-			const visible = Math.max(1, budget - 2);
-			if (cursorRow != null) {
-				if (cursorRow < scroll) scroll = cursorRow;
-				else if (cursorRow >= scroll + visible) scroll = cursorRow - visible + 1;
-			}
-			scroll = Math.max(0, Math.min(scroll, middle.length - visible));
-			const above = scroll;
-			const below = middle.length - (scroll + visible);
-			const out: string[] = [theme.fg("dim", above > 0 ? ` \u2191 ${above} more` : "")];
-			for (const l of middle.slice(scroll, scroll + visible)) out.push(l);
-			out.push(theme.fg("dim", below > 0 ? ` \u2193 ${below} more` : ""));
-			return out;
-		}
-
-		/**
-		 * Assemble pinned chrome + windowed middle within the viewport budget.
-		 * On tiny terminals, drop borders then the subtitle to preserve the middle,
-		 * and hard-clamp the total so the component never overflows the viewport.
+		 * Draw the box: pinned chrome and windowed middle, framed on all four sides.
+		 *
+		 * `inner` is the content width, two columns narrower than the overlay, since the
+		 * side borders own a column each. The sides are what stop the panel bleeding into
+		 * the transcript behind it, so unlike the top and bottom rules they are never
+		 * shed: they cost columns, and the shedding below is only ever buying rows.
 		 */
 		function frame(
-			width: number,
-			parts: { header: string; subtitle?: string; middle: string[]; cursorRow: number | null; footer: string[] },
+			inner: number,
+			parts: {
+				header: string;
+				subtitle?: string;
+				middle: string[];
+				cursorRow: number | null;
+				/** Rows the cursor's source line occupies once wrapped, with its annotations. */
+				cursorSpan?: number;
+				footer: string[];
+			},
 		): string[] {
-			const budget = Math.max(1, tui.terminal.rows - FOOTER_RESERVE);
+			const budget = overlayBudget(tui.terminal.rows);
 			let useBorders = true;
 			let useSubtitle = !!parts.subtitle;
 			const fixed = () => (useBorders ? 2 : 0) + 1 + (useSubtitle ? 1 : 0) + parts.footer.length;
@@ -363,18 +359,32 @@ function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise
 			if (fixed() + 1 > budget) useSubtitle = false;
 
 			const midBudget = Math.max(0, budget - fixed());
-			const mid = windowMiddle(parts.middle, midBudget, parts.cursorRow);
+			const mid = windowLines(parts.middle, midBudget, {
+				cursor: parts.cursorRow,
+				cursorSpan: parts.cursorSpan,
+				scroll,
+				indicator: moreIndicator(theme),
+			});
+			scroll = mid.scroll;
 
-			const border = theme.fg("accent", "\u2500".repeat(width));
+			const body: string[] = [parts.header];
+			if (useSubtitle && parts.subtitle) body.push(parts.subtitle);
+			body.push(...mid.lines);
+			body.push(...parts.footer);
+
+			const rule = "\u2500".repeat(inner);
+			const side = theme.fg("accent", "\u2502");
 			const out: string[] = [];
-			if (useBorders) out.push(border);
-			out.push(parts.header);
-			if (useSubtitle && parts.subtitle) out.push(parts.subtitle);
-			out.push(...mid);
-			out.push(...parts.footer);
-			if (useBorders) out.push(border);
-			// Absolute guarantee: never exceed the viewport, even if chrome alone is large.
-			return out.slice(0, budget);
+			if (useBorders) out.push(theme.fg("accent", `\u250c${rule}\u2510`));
+			// Pad to exactly `inner` so the right border lands on the edge rather than
+			// hugging the text; truncateToWidth's own pad also handles a wide glyph that
+			// straddles the boundary, which plain slicing would leave a column short.
+			for (const line of body) out.push(side + truncateToWidth(line, inner, "", true) + side);
+			if (useBorders) out.push(theme.fg("accent", `\u2514${rule}\u2518`));
+			// The shedding above only keeps the corner rules when fixed() < budget, which
+			// also guarantees the total fits, so this clamp can never leave a box capped on
+			// one side only.
+			return clampToBudget(out, budget);
 		}
 
 		function renderMain(width: number): string[] {
@@ -416,6 +426,7 @@ function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise
 		function renderAnnotate(width: number): string[] {
 			const middle: string[] = [];
 			let cursorRow = 0;
+			let cursorSpan = 1;
 			const { start, end } = rangeBounds();
 			const contPrefix = ANNOTATION_INDENT;
 			const textWidth = Math.max(1, width - visibleWidth(contPrefix));
@@ -446,6 +457,8 @@ function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise
 						});
 					}
 				}
+				// A wrapped line and its comment bubbles scroll as one unit.
+				if (isCursor) cursorSpan = middle.length - cursorRow;
 			}
 
 			if (overall) {
@@ -486,6 +499,7 @@ function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise
 				middle,
 				// Follow the cursor only when navigating, not while typing a comment.
 				cursorRow: inputMode ? null : cursorRow,
+				cursorSpan,
 				footer,
 			});
 		}
@@ -494,7 +508,9 @@ function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise
 			render: (width: number) => {
 				const rows = tui.terminal.rows;
 				if (cached && cachedWidth === width && cachedRows === rows) return cached;
-				cached = mode === "main" ? renderMain(width) : renderAnnotate(width);
+				// Everything below lays out inside the box; the side borders own two columns.
+				const inner = Math.max(1, width - 2);
+				cached = mode === "main" ? renderMain(inner) : renderAnnotate(inner);
 				cachedWidth = width;
 				cachedRows = rows;
 				return cached;
@@ -504,5 +520,5 @@ function runComponent(ctx: ExtensionContext, options: AnnotatorOptions): Promise
 			},
 			handleInput,
 		};
-	});
+	}, { overlay: true, overlayOptions: OVERLAY_OPTIONS });
 }

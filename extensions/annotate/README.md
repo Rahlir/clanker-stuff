@@ -28,6 +28,23 @@ extension only runs the review loop; it never finalizes anything itself.
 back as feedback) or edit it (sent back as "use this version instead"). Esc
 cancels without sending anything.
 
+## On screen
+
+The review renders as a centered, fully framed overlay in both regular and
+fullscreen TUI modes, floating above the transcript instead of taking over the
+input area. pi pads an overlay to its own width but draws no edges, so the box is
+opaque; the border is what keeps it legible against dense text behind it. Long content
+scrolls inside the box rather than being cut off (`↑`/`↓` on the review screen; the
+annotate screen follows your cursor), with the header and help bar pinned.
+
+Two consequences:
+
+1. **edit** leaves the overlay for pi's own editor dialog at the bottom of the
+   screen and returns afterwards, which is what preserves the `ctrl+g`
+   external-editor round-trip.
+2. pi refuses to switch TUI mode through `/settings` while an overlay is open,
+   so close the review first.
+
 ## Reusable core
 
 The TUI lives in `lib/annotator.ts` as `openAnnotator(ctx, options)`, a neutral

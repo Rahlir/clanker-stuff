@@ -49,6 +49,7 @@ import {
   createReviewState,
   getFinalOutput,
   MAX_ACTIVITY_ITEMS,
+  parseFailureSummary,
   raceAbort,
   type ReviewState,
   type ReviewUsage,
@@ -200,6 +201,17 @@ function getUserConfigDir(): string {
   return path.join(base, "pi-clanker");
 }
 
+/**
+ * Report a non-fatal problem. Prefers the session UI because a bare console write
+ * lands on pi's alternate screen in fullscreen mode, painting over the viewport
+ * and vanishing on the next repaint. Falls back to stderr before session_start
+ * and in headless modes, where there is no UI to notify.
+ */
+function warn(message: string): void {
+  if (uiHandle) uiHandle.notify(`[code_review] ${message}`, "warning");
+  else console.error(`[code_review] ${message}`);
+}
+
 function readJsonConfig(file: string): ReviewConfig {
   try {
     const raw = fs.readFileSync(file, "utf-8");
@@ -210,9 +222,7 @@ function readJsonConfig(file: string): ReviewConfig {
     return config;
   } catch (e) {
     const isNotFound = (e as NodeJS.ErrnoException).code === "ENOENT";
-    if (!isNotFound) {
-      console.error(`[code_review] Failed to read ${file}: ${(e as Error).message}`);
-    }
+    if (!isNotFound) warn(`Failed to read ${file}: ${(e as Error).message}`);
     return {};
   }
 }
@@ -395,8 +405,12 @@ function finalizeJob(job: Job, exitCode: number, resolveDone: (result: ReviewRes
   } else if (exitCode !== 0 || !output) {
     job.status = "failed";
     const errorMsg = job.state.stderr || output || "(no output from reviewer)";
+    // Malformed stdout often explains the failure, so it rides along with stderr.
+    const parseNote = parseFailureSummary(job.state);
     outcome = {
-      content: [{ type: "text", text: `Code review failed (exit ${exitCode}): ${errorMsg}` }],
+      content: [
+        { type: "text", text: `Code review failed (exit ${exitCode}): ${errorMsg}${parseNote ? `\n${parseNote}` : ""}` },
+      ],
       details: baseDetails(job, false, "review", { exitCode }),
       isError: true,
     };

@@ -10,8 +10,15 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { withUiLock } from "../../lib/ui-lock.ts";
+import { clampToBudget, isFullscreen, moreIndicator, viewportBudget, windowLines } from "../../lib/viewport.ts";
 import { severityColor } from "./format.ts";
 import type { Severity } from "./state.ts";
+
+// Border + title + blank above the list, blank + help + border below it.
+const CHROME_ROWS = 6;
+// Head line + excerpt. Kept together when scrolling, so selecting a note never
+// leaves its body off screen.
+const ROWS_PER_NOTE = 2;
 
 export interface PreviewItem {
 	id: number;
@@ -30,7 +37,13 @@ function runComponent(ctx: ExtensionContext, items: PreviewItem[]): Promise<numb
 	return ctx.ui.custom<number[] | null>((tui, theme, _kb, done) => {
 		let cursor = 0;
 		const selected = new Set(items.map((i) => i.id));
+		let scroll = 0;
 		let cached: string[] | undefined;
+		// Keyed by everything the layout depends on; pi does not invalidate caches on
+		// resize, and /settings can switch TUI mode (and so the budget) while we are up.
+		let cachedWidth: number | undefined;
+		let cachedRows: number | undefined;
+		let cachedFullscreen: boolean | undefined;
 
 		function refresh(): void {
 			cached = undefined;
@@ -63,34 +76,52 @@ function runComponent(ctx: ExtensionContext, items: PreviewItem[]): Promise<numb
 		}
 
 		function render(width: number): string[] {
-			if (cached) return cached;
-			const lines: string[] = [];
-			lines.push(theme.fg("accent", "\u2500".repeat(width)));
-			lines.push(
-				` ${theme.fg("accent", theme.bold("Post review"))} ${theme.fg("muted", `\u00b7 ${selected.size}/${items.length} note${items.length === 1 ? "" : "s"} selected`)}`,
-			);
-			lines.push("");
+			const rows = tui.terminal.rows;
+			const fullscreen = isFullscreen(tui);
+			if (cached && cachedWidth === width && cachedRows === rows && cachedFullscreen === fullscreen) return cached;
 
+			const middle: string[] = [];
+			let cursorRow = 0;
 			for (let i = 0; i < items.length; i++) {
 				const item = items[i];
 				const isCursor = i === cursor;
+				if (isCursor) cursorRow = middle.length;
 				const box = selected.has(item.id) ? theme.fg("success", "\u2611") : theme.fg("dim", "\u2610");
 				const marker = isCursor ? theme.fg("accent", "\u25b8") : " ";
 				const sev = theme.fg(severityColor(item.severity), `[${item.severity}]`);
 				const kind = theme.fg("muted", `${item.inline ? "inline" : "general"} ${item.location}`);
 				const head = `${marker} ${box} ${theme.fg("muted", `#${item.id}`)} ${sev} ${kind}`;
-				lines.push(truncateToWidth(head, width));
+				middle.push(truncateToWidth(head, width));
 				const excerpt = item.body.replace(/\s+/g, " ").trim();
-				lines.push(`      ${truncateToWidth(theme.fg("text", excerpt), Math.max(1, width - 6))}`);
+				middle.push(`      ${truncateToWidth(theme.fg("text", excerpt), Math.max(1, width - 6))}`);
 			}
 
+			const budget = viewportBudget(tui);
+			const windowed = windowLines(middle, Math.max(0, budget - CHROME_ROWS), {
+				cursor: cursorRow,
+				cursorSpan: ROWS_PER_NOTE,
+				scroll,
+				indicator: moreIndicator(theme),
+			});
+			scroll = windowed.scroll;
+
+			const lines: string[] = [theme.fg("accent", "\u2500".repeat(width))];
+			lines.push(
+				` ${theme.fg("accent", theme.bold("Post review"))} ${theme.fg("muted", `\u00b7 ${selected.size}/${items.length} note${items.length === 1 ? "" : "s"} selected`)}`,
+			);
+			lines.push("");
+			lines.push(...windowed.lines);
 			lines.push("");
 			lines.push(
 				theme.fg("dim", ` ${truncateToWidth("\u2191\u2193 move \u00b7 space toggle \u00b7 enter post \u00b7 esc cancel", width - 1)}`),
 			);
 			lines.push(theme.fg("accent", "\u2500".repeat(width)));
-			cached = lines;
-			return lines;
+
+			cached = clampToBudget(lines, budget);
+			cachedWidth = width;
+			cachedRows = rows;
+			cachedFullscreen = fullscreen;
+			return cached;
 		}
 
 		return {

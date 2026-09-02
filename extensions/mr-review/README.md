@@ -43,10 +43,13 @@ State persists across restarts; re-running `/mr-review` on the same MR resumes.
 - `/mr-reset`: clear the current review
 
 The issue widget above the editor auto-sizes to the terminal: it uses the full
-width for summaries and shows as many issues as fit the viewport height. When
-there are more than fit, it shows a `+N more` notice; use `/mr-issues` to see
-them all. Long note text in the draft/annotate screens is soft-wrapped so it is
-never cut off (the posted note keeps its original line breaks).
+width for summaries and shows as many issues as fit. In fullscreen mode it takes
+at most a third of the height, because every row it occupies is taken from the
+transcript for as long as the review lasts. When there are more issues than fit,
+it shows a `+N more` notice; use `/mr-issues` to see them all.
+
+`/mr-issues` and `/mr-post` hide the widget while they are open, since all three
+share pi's bottom dock and the dock clips whatever does not fit.
 
 ## Tools (agent-callable)
 

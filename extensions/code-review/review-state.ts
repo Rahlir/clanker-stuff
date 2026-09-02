@@ -32,6 +32,10 @@ export interface ReviewState {
   stderr: string;
   /** Model reported by the subprocess, falling back to the requested model. */
   resolvedModel: string;
+  /** Lines of reviewer stdout that were not valid JSON. */
+  parseFailures: number;
+  /** Newest parse error, kept for diagnostics. */
+  lastParseError: string | null;
 }
 
 export const MAX_ACTIVITY_ITEMS = 10;
@@ -46,16 +50,25 @@ export function createReviewState(model: string): ReviewState {
     streamingText: "",
     stderr: "",
     resolvedModel: model,
+    parseFailures: 0,
+    lastParseError: null,
   };
 }
 
-export function parseEventLine(line: string): Record<string, unknown> | null {
+export type ParsedLine = { ok: true; event: Record<string, unknown> } | { ok: false; error: string };
+
+/**
+ * Parse one line of reviewer stdout; null for the blank lines between events.
+ * Malformed JSON comes back as an error rather than a log line: a console write
+ * from here paints over pi's fullscreen viewport and is then lost on the next
+ * repaint, and the failure is more useful counted in the job's diagnostics.
+ */
+export function parseEventLine(line: string): ParsedLine | null {
   if (!line.trim()) return null;
   try {
-    return JSON.parse(line) as Record<string, unknown>;
+    return { ok: true, event: JSON.parse(line) as Record<string, unknown> };
   } catch (e) {
-    console.error(`[code_review] Failed to parse JSON event: ${(e as Error).message}`);
-    return null;
+    return { ok: false, error: (e as Error).message };
   }
 }
 
@@ -108,8 +121,21 @@ export function applyEvent(state: ReviewState, event: Record<string, unknown>): 
 }
 
 export function applyEventLine(state: ReviewState, line: string): void {
-  const event = parseEventLine(line);
-  if (event) applyEvent(state, event);
+  const parsed = parseEventLine(line);
+  if (!parsed) return;
+  if (parsed.ok) {
+    applyEvent(state, parsed.event);
+    return;
+  }
+  state.parseFailures++;
+  state.lastParseError = parsed.error;
+}
+
+/** One-line summary of malformed reviewer output, or null when there was none. */
+export function parseFailureSummary(state: ReviewState): string | null {
+  if (state.parseFailures === 0) return null;
+  const noun = state.parseFailures === 1 ? "line" : "lines";
+  return `${state.parseFailures} unparsable output ${noun} (last: ${state.lastParseError})`;
 }
 
 /** Append reviewer stderr, capped so a runaway process can't blow up memory. */

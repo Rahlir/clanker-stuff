@@ -9,6 +9,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { withUiLock } from "../../lib/ui-lock.ts";
+import { clampToBudget, isFullscreen, moreIndicator, viewportBudget, windowLines } from "../../lib/viewport.ts";
 
 // Types
 interface QuestionOption {
@@ -109,8 +110,13 @@ export default function questionnaire(pi: ExtensionAPI) {
 				let optionIndex = 0;
 				let inputMode = false;
 				let inputQuestionId: string | null = null;
+				let scroll = 0;
 				let cachedLines: string[] | undefined;
+				// Keyed by everything the layout depends on; pi does not invalidate caches on
+				// resize, and /settings can switch TUI mode (and so the budget) while we are up.
 				let cachedWidth: number | undefined;
+				let cachedRows: number | undefined;
+				let cachedFullscreen: boolean | undefined;
 				const answers = new Map<string, Answer>();
 
 				// Editor for "Type something" option
@@ -166,6 +172,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 						currentTab = questions.length; // Submit tab
 					}
 					optionIndex = 0;
+					scroll = 0;
 					refresh();
 				}
 
@@ -207,23 +214,31 @@ export default function questionnaire(pi: ExtensionAPI) {
 						if (matchesKey(data, Key.tab) || matchesKey(data, Key.right)) {
 							currentTab = (currentTab + 1) % totalTabs;
 							optionIndex = 0;
+							scroll = 0;
 							refresh();
 							return;
 						}
 						if (matchesKey(data, Key.shift("tab")) || matchesKey(data, Key.left)) {
 							currentTab = (currentTab - 1 + totalTabs) % totalTabs;
 							optionIndex = 0;
+							scroll = 0;
 							refresh();
 							return;
 						}
 					}
 
-					// Submit tab
+					// Submit tab. It has no cursor, so up/down scroll the summary instead.
 					if (currentTab === questions.length) {
 						if (matchesKey(data, Key.enter) && allAnswered()) {
 							submit(false);
 						} else if (matchesKey(data, Key.escape)) {
 							submit(true);
+						} else if (matchesKey(data, Key.up)) {
+							scroll = Math.max(0, scroll - 1);
+							refresh();
+						} else if (matchesKey(data, Key.down)) {
+							scroll += 1;
+							refresh();
 						}
 						return;
 					}
@@ -262,16 +277,18 @@ export default function questionnaire(pi: ExtensionAPI) {
 				}
 
 				function render(width: number): string[] {
-					if (cachedLines && cachedWidth === width) return cachedLines;
+					const rows = tui.terminal.rows;
+					const fullscreen = isFullscreen(tui);
+					if (cachedLines && cachedWidth === width && cachedRows === rows && cachedFullscreen === fullscreen) {
+						return cachedLines;
+					}
 
-					const lines: string[] = [];
 					const q = currentQuestion();
 					const opts = currentOptions();
+					const fit = (s: string) => truncateToWidth(s, width);
 
-					// Helper to add truncated line
-					const add = (s: string) => lines.push(truncateToWidth(s, width));
-
-					add(theme.fg("accent", "─".repeat(width)));
+					// Pinned above the scrollable middle.
+					const head: string[] = [fit(theme.fg("accent", "─".repeat(width)))];
 
 					// Tab bar (multi-question only)
 					if (isMulti) {
@@ -293,87 +310,114 @@ export default function questionnaire(pi: ExtensionAPI) {
 							? theme.bg("selectedBg", theme.fg("text", submitText))
 							: theme.fg(canSubmit ? "success" : "dim", submitText);
 						tabs.push(`${submitStyled} →`);
-						add(` ${tabs.join("")}`);
-						lines.push("");
+						head.push(fit(` ${tabs.join("")}`));
+						head.push("");
 					}
 
-					// Helper to render options list
-					function renderOptions() {
+					const middle: string[] = [];
+					const foot: string[] = [];
+					let cursorRow: number | null = null;
+					let cursorSpan = 1;
+
+					/**
+					 * Appends the option list to `middle`; returns the selected option's first row
+					 * and how many rows it occupies, so its description is never left off screen.
+					 */
+					function renderOptions(): { row: number; span: number } | null {
+						let selectedSpan: { row: number; span: number } | null = null;
 						for (let i = 0; i < opts.length; i++) {
 							const opt = opts[i];
 							const selected = i === optionIndex;
 							const isOther = opt.isOther === true;
 							const prefix = selected ? theme.fg("accent", "> ") : "  ";
 							const color = selected ? "accent" : "text";
+							const row = middle.length;
 							// Mark "Type something" differently when in input mode
 							if (isOther && inputMode) {
-								add(prefix + theme.fg("accent", `${i + 1}. ${opt.label} ✎`));
+								middle.push(fit(prefix + theme.fg("accent", `${i + 1}. ${opt.label} ✎`)));
 							} else {
-								add(prefix + theme.fg(color, `${i + 1}. ${opt.label}`));
+								middle.push(fit(prefix + theme.fg(color, `${i + 1}. ${opt.label}`)));
 							}
 							if (opt.description) {
 								for (const dl of wrapTextWithAnsi(opt.description, width - 5)) {
-									lines.push(`     ${theme.fg("muted", dl)}`);
+									middle.push(`     ${theme.fg("muted", dl)}`);
 								}
 							}
+							// A label and its wrapped description scroll as one unit.
+							if (selected) selectedSpan = { row, span: middle.length - row };
 						}
+						return selectedSpan;
 					}
 
 					// Content
 					if (inputMode && q) {
 						for (const line of wrapTextWithAnsi(q.prompt, width - 1)) {
-							lines.push(` ${theme.fg("text", line)}`);
+							middle.push(` ${theme.fg("text", line)}`);
 						}
-						lines.push("");
-						// Show options for reference
+						middle.push("");
+						// Options stay as reference only, so the window need not follow them; the
+						// editor is pinned below instead, where typing can never scroll out of view.
 						renderOptions();
-						lines.push("");
-						add(theme.fg("muted", " Your answer:"));
+						foot.push("");
+						foot.push(fit(theme.fg("muted", " Your answer:")));
 						for (const line of editor.render(width - 2)) {
-							add(` ${line}`);
+							foot.push(fit(` ${line}`));
 						}
-						lines.push("");
-						add(theme.fg("dim", " Enter to submit • Esc to cancel"));
+						foot.push("");
+						foot.push(fit(theme.fg("dim", " Enter to submit • Esc to cancel")));
 					} else if (currentTab === questions.length) {
-						add(theme.fg("accent", theme.bold(" Ready to submit")));
-						lines.push("");
+						middle.push(fit(theme.fg("accent", theme.bold(" Ready to submit"))));
+						middle.push("");
 						for (const question of questions) {
 							const answer = answers.get(question.id);
 							if (answer) {
 								const prefix = answer.wasCustom ? "(wrote) " : "";
-								add(`${theme.fg("muted", ` ${question.label}: `)}${theme.fg("text", prefix + answer.label)}`);
+								middle.push(fit(`${theme.fg("muted", ` ${question.label}: `)}${theme.fg("text", prefix + answer.label)}`));
 							}
 						}
-						lines.push("");
+						middle.push("");
 						if (allAnswered()) {
-							add(theme.fg("success", " Press Enter to submit"));
+							middle.push(fit(theme.fg("success", " Press Enter to submit")));
 						} else {
 							const missing = questions
 								.filter((q) => !answers.has(q.id))
 								.map((q) => q.label)
 								.join(", ");
-							add(theme.fg("warning", ` Unanswered: ${missing}`));
+							middle.push(fit(theme.fg("warning", ` Unanswered: ${missing}`)));
 						}
 					} else if (q) {
 						for (const line of wrapTextWithAnsi(q.prompt, width - 1)) {
-							lines.push(` ${theme.fg("text", line)}`);
+							middle.push(` ${theme.fg("text", line)}`);
 						}
-						lines.push("");
-						renderOptions();
+						middle.push("");
+						const selected = renderOptions();
+						cursorRow = selected?.row ?? null;
+						cursorSpan = selected?.span ?? 1;
 					}
 
-					lines.push("");
+					foot.push("");
 					if (!inputMode) {
 						const help = isMulti
 							? " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel"
 							: " ↑↓ navigate • Enter select • Esc cancel";
-						add(theme.fg("dim", help));
+						foot.push(fit(theme.fg("dim", help)));
 					}
-					add(theme.fg("accent", "─".repeat(width)));
+					foot.push(fit(theme.fg("accent", "─".repeat(width))));
 
-					cachedLines = lines;
+					const budget = viewportBudget(tui);
+					const windowed = windowLines(middle, Math.max(0, budget - head.length - foot.length), {
+						cursor: cursorRow,
+						cursorSpan,
+						scroll,
+						indicator: moreIndicator(theme),
+					});
+					scroll = windowed.scroll;
+
+					cachedLines = clampToBudget([...head, ...windowed.lines, ...foot], budget);
 					cachedWidth = width;
-					return lines;
+					cachedRows = rows;
+					cachedFullscreen = fullscreen;
+					return cachedLines;
 				}
 
 				return {

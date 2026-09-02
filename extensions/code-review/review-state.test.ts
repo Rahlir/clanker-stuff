@@ -11,11 +11,13 @@ import type { Message } from "@earendil-works/pi-ai";
 import {
   ABORTED,
   applyEvent,
+  applyEventLine,
   appendStderr,
   createReviewState,
   getFinalOutput,
   MAX_ACTIVITY_ITEMS,
   MAX_STDERR_LENGTH,
+  parseFailureSummary,
   raceAbort,
 } from "./review-state.ts";
 
@@ -33,6 +35,42 @@ test("createReviewState seeds the requested model and empty accumulators", () =>
   assert.deepEqual(state.activity, []);
   assert.equal(state.streamingText, "");
   assert.equal(state.usage.turns, 0);
+  assert.equal(state.parseFailures, 0);
+  assert.equal(state.lastParseError, null);
+});
+
+test("applyEventLine folds a valid event and leaves the failure counters alone", () => {
+  const state = createReviewState("m");
+  applyEventLine(state, JSON.stringify({ type: "tool_execution_start", toolName: "bash", args: {} }));
+  assert.equal(state.activity.length, 1);
+  assert.equal(state.parseFailures, 0);
+});
+
+test("applyEventLine counts malformed lines instead of logging them", () => {
+  const state = createReviewState("m");
+  applyEventLine(state, "not json");
+  applyEventLine(state, "{ still not json");
+  assert.equal(state.parseFailures, 2);
+  assert.ok(state.lastParseError);
+  assert.deepEqual(state.activity, []);
+});
+
+test("applyEventLine ignores blank lines, which are normal between events", () => {
+  const state = createReviewState("m");
+  applyEventLine(state, "");
+  applyEventLine(state, "   ");
+  assert.equal(state.parseFailures, 0);
+});
+
+test("parseFailureSummary is null until something fails, then counts it", () => {
+  const state = createReviewState("m");
+  assert.equal(parseFailureSummary(state), null);
+
+  applyEventLine(state, "nope");
+  assert.match(parseFailureSummary(state) ?? "", /^1 unparsable output line \(last: .+\)$/);
+
+  applyEventLine(state, "nope again");
+  assert.match(parseFailureSummary(state) ?? "", /^2 unparsable output lines \(last: .+\)$/);
 });
 
 test("tool_execution_start appends a toolCall activity item", () => {

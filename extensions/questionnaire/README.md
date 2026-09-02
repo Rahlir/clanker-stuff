@@ -50,7 +50,7 @@ structured interviews (such as `grill-me`).
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Move between options |
+| `↑` / `↓` | Move between options (scroll the summary on the Submit tab) |
 | `Enter` | Select highlighted option (or submit on the Submit tab) |
 | `Tab` / `→` | Next question tab (multi-question only) |
 | `Shift+Tab` / `←` | Previous question tab (multi-question only) |
@@ -97,6 +97,16 @@ The tool is declared `executionMode: "sequential"` and takes the shared lock in
 `lib/ui-lock.ts`, so it can never render alongside another interactive UI (a
 second one would evict the first and hang whoever was waiting on it). A
 concurrent call fails with a clear error instead.
+
+## Long questionnaires
+
+The prompt, options and submit summary scroll within whatever height the terminal
+allows; the tab bar, help line and borders stay pinned. Navigating with `↑`/`↓`
+keeps the selected option in view, and the submit tab scrolls with the same keys.
+While you are typing a free-text answer, the editor is pinned below the scrolling
+region: the options scroll, the editor does not. On a terminal too short to hold
+even the pinned rows, the border and tab bar at the top are dropped before the
+editor and help bar.
 
 ## Non-interactive mode
 

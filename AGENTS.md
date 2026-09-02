@@ -43,6 +43,26 @@ the rest of the session. Any tool that opens UI must declare
 at a time) and should run the UI inside `withUiLock` from `lib/ui-lock.ts`, which
 turns a leftover concurrent open into a clear error instead of a silent hang.
 
+## Interactive UI: fit the viewport
+
+A component must bound its own height in both TUI modes, for different reasons.
+In regular mode, emitting more lines than the terminal degrades pi's differential
+renderer into full-screen repaints (flicker). In fullscreen mode, docked
+components share a fixed bottom dock with the status line, widgets, editor and
+footer, and the layout clips over-tall entries at the **bottom** - which is where
+our help bars and embedded editors live.
+
+Budget through `lib/viewport.ts`: `viewportBudget(tui)` for the mode-aware row
+allowance, `windowLines()` to scroll the remainder (pass `cursorSpan` when one
+item spans several rows, so it is never sheared in half at the edge),
+`moreIndicator(theme)` for the shared "N more" rows, and `clampToBudget()` to fit
+the assembled result. Consult them per render and never cache across renders:
+`/settings` switches the mode at runtime and the terminal can be resized. Overlays
+(`ctx.ui.custom` with `{ overlay: true }`) are bounded by their own `maxHeight`
+rather than by the dock, so they skip `viewportBudget` but still need
+`windowLines`, since pi clips an overlay past its box too. Worked examples:
+`lib/annotator.ts` (overlay) and `extensions/mr-review/post-tui.ts` (docked).
+
 ## Extensions: no build step
 
 pi loads TypeScript extensions directly; there is no compile step. After editing `index.ts`, run `/reload` in pi to pick up the change.

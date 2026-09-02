@@ -19,14 +19,26 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { truncateToWidth } from "@earendil-works/pi-tui";
+import { isFullscreen, type ViewportTarget } from "../../lib/viewport.ts";
 import { severityColor, stateView } from "./format.ts";
 import type { Issue, ReviewStore } from "./state.ts";
 
 // Rows kept clear below/around the widget (editor, footer, transcript breathing room).
 const VIEWPORT_RESERVE = 12;
 const MIN_ISSUE_ROWS = 4;
+// Fullscreen keeps the transcript in a fixed region that the dock eats into, so a
+// row spent here is gone for the whole review rather than just covering scrollback.
+const FULLSCREEN_ROWS_DIVISOR = 3;
 // Visible columns consumed by " #id  [severity]   state " before the summary.
 const PREFIX_COLS = 1 + 4 + 1 + 11 + 1 + 12 + 1;
+
+function issueRowBudget(tui: ViewportTarget): number {
+	const rows = tui.terminal.rows;
+	const cap = isFullscreen(tui)
+		? Math.min(rows - VIEWPORT_RESERVE, Math.floor(rows / FULLSCREEN_ROWS_DIVISOR))
+		: rows - VIEWPORT_RESERVE;
+	return Math.max(MIN_ISSUE_ROWS, cap);
+}
 
 function issueLine(issue: Issue, theme: Theme, width: number): string {
 	const id = theme.fg("muted", `#${issue.id}`.padEnd(4));
@@ -38,7 +50,7 @@ function issueLine(issue: Issue, theme: Theme, width: number): string {
 	return ` ${id} ${sev} ${state} ${theme.fg("text", summary)}`;
 }
 
-function renderLines(store: ReviewStore, theme: Theme, width: number, rows: number): string[] {
+function renderLines(store: ReviewStore, theme: Theme, width: number, maxRows: number): string[] {
 	const c = store.counts();
 	const head =
 		`${theme.fg("accent", theme.bold(`MR #${store.activeMr}`))} ` +
@@ -49,7 +61,6 @@ function renderLines(store: ReviewStore, theme: Theme, width: number, rows: numb
 	const lines = [truncateToWidth(head, width)];
 
 	const issues = store.list();
-	const maxRows = Math.max(MIN_ISSUE_ROWS, rows - VIEWPORT_RESERVE);
 	if (issues.length <= maxRows) {
 		for (const issue of issues) lines.push(issueLine(issue, theme, width));
 	} else {
@@ -63,7 +74,7 @@ function renderLines(store: ReviewStore, theme: Theme, width: number, rows: numb
 /** Factory for ctx.ui.setWidget's component form; reads the store live on render. */
 export function issueWidgetFactory(store: ReviewStore) {
 	return (tui: TUI, theme: Theme): Component => ({
-		render: (width: number) => renderLines(store, theme, width, tui.terminal.rows),
+		render: (width: number) => renderLines(store, theme, width, issueRowBudget(tui)),
 		invalidate: () => {},
 	});
 }
