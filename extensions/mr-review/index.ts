@@ -71,6 +71,7 @@ Then:
 2. For every issue you find, call register_mr_issue(severity, summary, details, file?, startLine?, endLine?).
    - severity is critical, major, or minor.
    - Include file + startLine (and endLine for a range) when the issue is tied to specific lines; those become inline diff comments. Omit them for a general MR note.
+   - startLine is a new-side line number that must appear in one of the MR's diff hunks (an added or context line). GitLab rejects an anchor outside the diff, so prefer a general note over a guessed line.
    - Do NOT draft note text yet.
 3. After registering every issue, tell me the list is ready. We then go through issues one at a time.
 
@@ -93,7 +94,36 @@ type PostOutcome = {
 	status: "no-review" | "empty" | "cancelled" | "posted" | "failed";
 	message: string;
 	hadFailures: boolean;
+	/**
+	 * Recovery instructions aimed at the agent, appended to the tool result only.
+	 * /mr-post's notify shows `message` alone: a human reading the per-note detail
+	 * does not need the tool-call recipe.
+	 */
+	guidance?: string;
 };
+
+/**
+ * Tell the agent to fix the anchors instead of retrying.
+ *
+ * Without this, a rejected position produced a generic failure plus the blanket
+ * "re-run post_mr_review" advice, so the agent looped on an argv that can only
+ * ever fail the same way.
+ */
+function anchorGuidance(failures: { id: number; location: string }[]): string {
+	const list = failures.map((f) => `#${f.id} (${f.location})`).join(", ");
+	return [
+		`Anchor rejected for ${list}: that position is not part of this MR's diff, so GitLab cannot attach an inline comment there.`,
+		`Do NOT call post_mr_review again for ${list} unchanged; those calls will fail identically.`,
+		"Fix each one first, by re-reading the MR diff and calling either:",
+		"  - update_mr_issue(issueId, file, startLine[, endLine]) with a new-side line number that actually appears in a diff hunk of that file, or",
+		"  - update_mr_issue(issueId, clearAnchor: true) to drop the position and post it as a general MR note.",
+		"The approved note text is preserved and the issues stay queued, so post_mr_review picks up whichever anchors you have fixed.",
+	].join("\n");
+}
+
+function toolText(outcome: PostOutcome): string {
+	return outcome.guidance ? `${outcome.message}\n\n${outcome.guidance}` : outcome.message;
+}
 
 export default function mrReview(pi: ExtensionAPI): void {
 	const store = new ReviewStore();
@@ -184,6 +214,8 @@ export default function mrReview(pi: ExtensionAPI): void {
 		}
 
 		const results: string[] = [];
+		const anchorFailures: { id: number; location: string }[] = [];
+		const retryableIds: number[] = [];
 		let posted = 0;
 		for (const id of selected) {
 			const issue = store.getIssue(id);
@@ -195,22 +227,39 @@ export default function mrReview(pi: ExtensionAPI): void {
 				results.push(`#${id} \u2713`);
 			} else {
 				results.push(`#${id} \u2717 ${r.error}`);
+				if (r.kind === "anchor") anchorFailures.push({ id, location: locationLabel(issue) });
+				else retryableIds.push(id);
 			}
 		}
 		persist();
 		refreshWidget(ctx);
 		const hadFailures = posted < selected.length;
 		const detail = results.join(", ");
+		const guidance = anchorFailures.length > 0 ? anchorGuidance(anchorFailures) : undefined;
+		// The retry hint names the ids it applies to rather than saying "the failed
+		// notes": in a mixed batch a blanket hint would contradict the anchor guidance
+		// appended right after it, which is how the retry loop starts. The contrast
+		// clause only appears when there is an anchor failure to contrast against.
+		const retryHint =
+			retryableIds.length === 0
+				? ""
+				: ` Re-run post_mr_review to retry ${retryableIds.map((id) => `#${id}`).join(", ")}${
+						guidance ? " (unrelated to the anchor rejections below)" : ""
+					}; already-posted notes are skipped.`;
 		// "failed" only when nothing landed, so the tool can signal an error.
 		if (posted === 0) {
-			return { status: "failed", message: `Failed to post any notes to MR #${store.activeMr}: ${detail}`, hadFailures };
+			return {
+				status: "failed",
+				message: `Failed to post any notes to MR #${store.activeMr}: ${detail}.${retryHint}`,
+				hadFailures,
+				guidance,
+			};
 		}
-		// Lead with an explicit warning on partial failure so it is unmissable in
-		// the tool result; a retry is safe because --unique skips posted notes.
+		// Lead with an explicit warning on partial failure so it is unmissable.
 		const message = hadFailures
-			? `Posted with failures to MR #${store.activeMr}: ${detail}. Re-run post_mr_review to retry the failed notes (already-posted notes are skipped).`
+			? `Posted with failures to MR #${store.activeMr}: ${detail}.${retryHint}`
 			: `Posted to MR #${store.activeMr}: ${detail}`;
-		return { status: "posted", message, hadFailures };
+		return { status: "posted", message, hadFailures, guidance };
 	}
 
 	// ── Session restore ──────────────────────────────────────────────────
@@ -320,7 +369,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		name: "register_mr_issue",
 		label: "Register MR Issue",
 		description:
-			"Part of the /mr-review workflow; only available during an active review. Register an issue found during MR review into the tracked list. Silent (no UI). Provide file + startLine (and endLine for a range) when the issue is tied to specific lines; those drive inline diff comments. Omit them for a general MR note.",
+			"Part of the /mr-review workflow; only available during an active review. Register an issue found during MR review into the tracked list. Silent (no UI). Provide file + startLine (and endLine for a range) when the issue is tied to specific lines; those drive inline diff comments. Omit them for a general MR note. startLine must be a new-side line number that appears in one of the MR's diff hunks; GitLab rejects an anchor outside the diff, so omit the position rather than guessing a line.",
 		promptGuidelines: [
 			"register_mr_issue and the other mr-review tools belong to the /mr-review MR-review workflow only. Do not use them for general code review that isn't posting findings to a GitLab MR.",
 		],
@@ -420,7 +469,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		name: "update_mr_issue",
 		label: "Update MR Issue",
 		description:
-			"Part of the /mr-review workflow. Edit a registered issue or change its state. Use state 'rejected' to dismiss an issue or 'open' to reopen one. Reopening clears the drafted note AND the posted record, so if the issue was already posted, re-posting may create a second comment on GitLab when the new body differs. The 'commented' state is reached only through draft_mr_note approval.",
+			"Part of the /mr-review workflow. Edit a registered issue or change its state. Use state 'rejected' to dismiss an issue or 'open' to reopen one. Reopening clears the drafted note AND the posted record, so if the issue was already posted, re-posting may create a second comment on GitLab when the new body differs. The 'commented' state is reached only through draft_mr_note approval. Use this to repair an anchor GitLab rejected: pass file/startLine/endLine for a line inside a diff hunk, or clearAnchor to post the issue as a general note. Fixing an anchor keeps the approved note and leaves the issue queued for the next post_mr_review.",
 		parameters: Type.Object({
 			issueId: Type.Number({ description: "Id of the issue to update" }),
 			severity: Type.Optional(SEVERITY),
@@ -429,6 +478,12 @@ export default function mrReview(pi: ExtensionAPI): void {
 			file: Type.Optional(Type.String()),
 			startLine: Type.Optional(Type.Number()),
 			endLine: Type.Optional(Type.Number()),
+			clearAnchor: Type.Optional(
+				Type.Boolean({
+					description:
+						"Drop file/startLine/endLine so the issue posts as a general MR note instead of an inline comment",
+				}),
+			),
 			state: Type.Optional(StringEnum(["open", "rejected"] as const)),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -441,15 +496,17 @@ export default function mrReview(pi: ExtensionAPI): void {
 				file?: string;
 				startLine?: number;
 				endLine?: number;
+				clearAnchor?: boolean;
 				state?: "open" | "rejected";
 			};
 			const issue = store.updateIssue(p.issueId, p);
 			if (!issue) return errResult(`No issue #${p.issueId} in the current review.`);
 			persist();
 			refreshWidget(ctx);
-			return okResult(`Updated issue #${issue.id} [${issue.severity}] (${issue.state}): ${issue.summary}`, {
-				id: issue.id,
-			});
+			return okResult(
+				`Updated issue #${issue.id} [${issue.severity}] (${issue.state}) at ${locationLabel(issue)}: ${issue.summary}`,
+				{ id: issue.id },
+			);
 		},
 	});
 
@@ -465,9 +522,9 @@ export default function mrReview(pi: ExtensionAPI): void {
 			if (!ctx.hasUI) return errResult("post_mr_review requires an interactive UI.");
 			const outcome = await runPost(ctx);
 			if (outcome.status === "no-review" || outcome.status === "empty" || outcome.status === "failed") {
-				return errResult(outcome.message);
+				return errResult(toolText(outcome));
 			}
-			return okResult(outcome.message);
+			return okResult(toolText(outcome));
 		},
 	});
 }

@@ -70,6 +70,84 @@ test("reopening clears note and posted flag", () => {
 	assert.equal(after?.posted, undefined);
 });
 
+test("clearAnchor drops the position but keeps the approved note queued", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue({ ...sampleInput, endLine: 14 });
+	store.setNote(issue.id, "please fix");
+	store.updateIssue(issue.id, { clearAnchor: true });
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.file, undefined);
+	assert.equal(after?.startLine, undefined);
+	assert.equal(after?.endLine, undefined);
+	assert.equal(after?.note, "please fix", "an anchor fix must not discard the approved note");
+	assert.deepEqual(store.queued().map((i) => i.id), [issue.id], "issue stays queued for the next post");
+});
+
+test("clearAnchor combined with a new position sets the new position", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue({ ...sampleInput, endLine: 14 });
+	store.updateIssue(issue.id, { clearAnchor: true, file: "src/b.ts", startLine: 40 });
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.file, "src/b.ts");
+	assert.equal(after?.startLine, 40);
+	assert.equal(after?.endLine, undefined, "the stale range end is not carried over");
+});
+
+test("repointing an anchor keeps the note and the commented state", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue(sampleInput);
+	store.setNote(issue.id, "please fix");
+	store.updateIssue(issue.id, { startLine: 42 });
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.startLine, 42);
+	assert.equal(after?.state, "commented");
+	assert.equal(after?.note, "please fix");
+});
+
+test("a new startLine alone drops a stale endLine", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue({ ...sampleInput, startLine: 88, endLine: 95 });
+	store.updateIssue(issue.id, { startLine: 40 });
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.startLine, 40);
+	assert.equal(after?.endLine, undefined, "keeping 95 would post the range 40:95");
+});
+
+test("a restated range survives a repoint", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue({ ...sampleInput, startLine: 88, endLine: 95 });
+	store.updateIssue(issue.id, { startLine: 40, endLine: 46 });
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.startLine, 40);
+	assert.equal(after?.endLine, 46);
+});
+
+test("extending the range end alone leaves the start alone", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue({ ...sampleInput, startLine: 88 });
+	store.updateIssue(issue.id, { endLine: 92 });
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.startLine, 88);
+	assert.equal(after?.endLine, 92);
+});
+
+test("clearAnchor alongside a state change applies both", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue(sampleInput);
+	store.setNote(issue.id, "please fix");
+	store.updateIssue(issue.id, { clearAnchor: true, state: "rejected" });
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.file, undefined);
+	assert.equal(after?.state, "rejected");
+});
+
 test("counts reflect each lifecycle state", () => {
 	const store = new ReviewStore();
 	store.start("mr");

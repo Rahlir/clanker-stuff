@@ -108,20 +108,42 @@ export class ReviewStore {
 		return this.issues.find((i) => i.id === id);
 	}
 
-	/** Apply partial edits. `state` callers must restrict to open/rejected. */
+	/**
+	 * Apply partial edits. `state` callers must restrict to open/rejected.
+	 *
+	 * `clearAnchor` drops file/startLine/endLine, turning an inline note into a
+	 * general one; undefined fields alone cannot express that. It is applied
+	 * before the explicit fields so passing both replaces the anchor rather than
+	 * discarding the replacement. The drafted note is untouched either way, so a
+	 * queued issue stays queued after an anchor fix.
+	 *
+	 * A `startLine` without an `endLine` also drops any existing `endLine`. The
+	 * anchor is one unit: repointing the start of an 88-95 range while keeping 95
+	 * would post `--line 40:95`, re-raising the same out-of-diff rejection the
+	 * caller was trying to fix. Restate `endLine` to keep a range.
+	 */
 	updateIssue(
 		id: number,
 		fields: Partial<Pick<Issue, "severity" | "summary" | "details" | "file" | "startLine" | "endLine">> & {
 			state?: "open" | "rejected";
+			clearAnchor?: boolean;
 		},
 	): Issue | undefined {
 		const issue = this.getIssue(id);
 		if (!issue) return undefined;
+		if (fields.clearAnchor) {
+			issue.file = undefined;
+			issue.startLine = undefined;
+			issue.endLine = undefined;
+		}
 		if (fields.severity !== undefined) issue.severity = fields.severity;
 		if (fields.summary !== undefined) issue.summary = fields.summary;
 		if (fields.details !== undefined) issue.details = fields.details;
 		if (fields.file !== undefined) issue.file = fields.file;
-		if (fields.startLine !== undefined) issue.startLine = fields.startLine;
+		if (fields.startLine !== undefined) {
+			issue.startLine = fields.startLine;
+			if (fields.endLine === undefined) issue.endLine = undefined;
+		}
 		if (fields.endLine !== undefined) issue.endLine = fields.endLine;
 		if (fields.state !== undefined) {
 			issue.state = fields.state;

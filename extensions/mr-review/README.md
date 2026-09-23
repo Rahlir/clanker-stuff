@@ -60,7 +60,7 @@ registered as callable and cost no prompt tokens.
 
 - `register_mr_issue(severity, summary, details, file?, startLine?, endLine?)`
 - `draft_mr_note(issueId, body)`
-- `update_mr_issue(issueId, { severity?, summary?, details?, file?, lines?, state? })`
+- `update_mr_issue(issueId, { severity?, summary?, details?, file?, lines?, clearAnchor?, state? })`
 - `post_mr_review()`
 
 `draft_mr_note` and `post_mr_review` are declared `executionMode: "sequential"`,
@@ -93,3 +93,17 @@ quotes in note bodies are passed literally and never interpreted.
 General notes use `--unique` for idempotent re-runs. Inline diff comments cannot
 (glab treats `--file` and `--unique` as mutually exclusive), so their idempotency
 relies on the stored `posted` flag, which already prevents re-posting on retry.
+
+## Rejected anchors
+
+GitLab only accepts an inline comment on a line that is part of the MR diff. An
+anchor outside it is rejected at post time, and a plain retry sends the identical
+request, so the agent used to loop until the user interrupted it.
+
+`classifyPostError` in `glab.ts` separates those rejections (glab's `... not
+found in diff`, `invalid line range`, GitLab's `must be a valid line code`)
+from genuinely transient failures. The "re-run `post_mr_review`" hint is now
+only emitted when a retryable failure occurred; a rejected anchor instead
+returns instructions to repair it with `update_mr_issue` first, either by
+repointing it at a line inside a diff hunk or by passing `clearAnchor: true` to
+fall back to a general note.
