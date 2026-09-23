@@ -25,10 +25,10 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { openAnnotator } from "../../lib/annotator.ts";
 import { locationLabel, severityColor } from "./format.ts";
-import { postNote } from "./glab.ts";
+import { type AnchorErrorKind, isAnchorFailure, postNote } from "./glab.ts";
 import { openIssueList } from "./issues-tui.ts";
 import { type PreviewItem, openPostConfirm } from "./post-tui.ts";
-import { ReviewStore, type ReviewData, type Severity } from "./state.ts";
+import { ReviewStore, type ReviewData, type Severity, validateAnchor } from "./state.ts";
 import { issueWidgetFactory } from "./widget.ts";
 
 const WIDGET_ID = "mr-review";
@@ -72,6 +72,8 @@ Then:
    - severity is critical, major, or minor.
    - Include file + startLine (and endLine for a range) when the issue is tied to specific lines; those become inline diff comments. Omit them for a general MR note.
    - startLine is a new-side line number that must appear in one of the MR's diff hunks (an added or context line). GitLab rejects an anchor outside the diff, so prefer a general note over a guessed line.
+   - file without startLine means a finding about the file as a whole. GitLab cannot attach a comment to a file, so it posts as a general note with the path quoted at the top; write it so it reads that way.
+   - A line number without a file, or endLine without startLine, is rejected.
    - Do NOT draft note text yet.
 3. After registering every issue, tell me the list is ready. We then go through issues one at a time.
 
@@ -102,23 +104,44 @@ type PostOutcome = {
 	guidance?: string;
 };
 
+type AnchorFailure = { id: number; location: string; kind: AnchorErrorKind };
+
 /**
  * Tell the agent to fix the anchors instead of retrying.
  *
  * Without this, a rejected position produced a generic failure plus the blanket
  * "re-run post_mr_review" advice, so the agent looped on an argv that can only
- * ever fail the same way.
+ * ever fail the same way. The two kinds get different advice because repointing
+ * is only possible when the file itself is in the diff.
  */
-function anchorGuidance(failures: { id: number; location: string }[]): string {
-	const list = failures.map((f) => `#${f.id} (${f.location})`).join(", ");
-	return [
-		`Anchor rejected for ${list}: that position is not part of this MR's diff, so GitLab cannot attach an inline comment there.`,
-		`Do NOT call post_mr_review again for ${list} unchanged; those calls will fail identically.`,
-		"Fix each one first, by re-reading the MR diff and calling either:",
-		"  - update_mr_issue(issueId, file, startLine[, endLine]) with a new-side line number that actually appears in a diff hunk of that file, or",
-		"  - update_mr_issue(issueId, clearAnchor: true) to drop the position and post it as a general MR note.",
+function anchorGuidance(failures: AnchorFailure[]): string {
+	const label = (f: AnchorFailure) => `#${f.id} (${f.location})`;
+	const all = failures.map(label).join(", ");
+	const lineFailures = failures.filter((f) => f.kind === "anchor-line");
+	const fileFailures = failures.filter((f) => f.kind === "anchor-file");
+
+	const lines = [
+		`Anchor rejected for ${all}: that position is not part of this MR's diff, so GitLab cannot attach an inline comment there.`,
+		`Do NOT call post_mr_review again for ${all} unchanged; those calls will fail identically. Fix each one first:`,
+	];
+	if (lineFailures.length > 0) {
+		lines.push(
+			`For ${lineFailures.map(label).join(", ")} the line is outside the diff. Re-read the MR diff and call either:`,
+			"  - update_mr_issue(issueId, file, startLine[, endLine]) with a new-side line number that actually appears in a diff hunk of that file, or",
+			"  - update_mr_issue(issueId, postAsGeneral: true) to post it as a general MR note.",
+		);
+	}
+	if (fileFailures.length > 0) {
+		lines.push(
+			`For ${fileFailures.map(label).join(", ")} the file itself is not in the diff, so no line number will work. Call update_mr_issue(issueId, postAsGeneral: true), and pass a corrected file too if the path is wrong.`,
+		);
+	}
+	lines.push(
+		"A general note keeps its recorded file:line: it is quoted at the top of the posted body, so do not repeat it in the text.",
+		"Re-draft with draft_mr_note when the wording leans on the note being inline ('this line', 'here', 'the call above'): name the file and the symbol instead. The user approves the rewrite.",
 		"The approved note text is preserved and the issues stay queued, so post_mr_review picks up whichever anchors you have fixed.",
-	].join("\n");
+	);
+	return lines.join("\n");
 }
 
 function toolText(outcome: PostOutcome): string {
@@ -202,8 +225,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		const items: PreviewItem[] = queued.map((i) => ({
 			id: i.id,
 			severity: i.severity,
-			inline: !!(i.file && i.startLine),
-			location: i.file ? `${i.file}:${i.endLine ?? i.startLine}` : "general",
+			location: locationLabel(i),
 			body: i.note ?? "",
 		}));
 
@@ -214,7 +236,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		}
 
 		const results: string[] = [];
-		const anchorFailures: { id: number; location: string }[] = [];
+		const anchorFailures: AnchorFailure[] = [];
 		const retryableIds: number[] = [];
 		let posted = 0;
 		for (const id of selected) {
@@ -227,8 +249,9 @@ export default function mrReview(pi: ExtensionAPI): void {
 				results.push(`#${id} \u2713`);
 			} else {
 				results.push(`#${id} \u2717 ${r.error}`);
-				if (r.kind === "anchor") anchorFailures.push({ id, location: locationLabel(issue) });
-				else retryableIds.push(id);
+				if (isAnchorFailure(r.kind)) {
+					anchorFailures.push({ id, location: locationLabel(issue), kind: r.kind });
+				} else retryableIds.push(id);
 			}
 		}
 		persist();
@@ -369,7 +392,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		name: "register_mr_issue",
 		label: "Register MR Issue",
 		description:
-			"Part of the /mr-review workflow; only available during an active review. Register an issue found during MR review into the tracked list. Silent (no UI). Provide file + startLine (and endLine for a range) when the issue is tied to specific lines; those drive inline diff comments. Omit them for a general MR note. startLine must be a new-side line number that appears in one of the MR's diff hunks; GitLab rejects an anchor outside the diff, so omit the position rather than guessing a line.",
+			"Part of the /mr-review workflow; only available during an active review. Register an issue found during MR review into the tracked list. Silent (no UI). Provide file + startLine (and endLine for a range) when the issue is tied to specific lines; those drive inline diff comments. startLine must be a new-side line number that appears in one of the MR's diff hunks; GitLab rejects an anchor outside the diff, so omit the position rather than guessing a line. file on its own means a finding about the whole file: GitLab cannot anchor those, so it posts as a general note with the path quoted at the top. Omit all three for a general MR note. A line without a file, or endLine without startLine, is rejected.",
 		promptGuidelines: [
 			"register_mr_issue and the other mr-review tools belong to the /mr-review MR-review workflow only. Do not use them for general code review that isn't posting findings to a GitLab MR.",
 		],
@@ -377,7 +400,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 			severity: SEVERITY,
 			summary: Type.String({ description: "Short one-line summary shown in the issue list" }),
 			details: Type.String({ description: "Full reasoning: why this is an issue and what to consider" }),
-			file: Type.Optional(Type.String({ description: "Path to the file the issue is in (for inline comments)" })),
+			file: Type.Optional(Type.String({ description: "Path to the file the issue is in (required for a line anchor)" })),
 			startLine: Type.Optional(Type.Number({ description: "First line the issue refers to (for inline comments)" })),
 			endLine: Type.Optional(Type.Number({ description: "Last line of the range, if the issue spans multiple lines" })),
 		}),
@@ -391,6 +414,8 @@ export default function mrReview(pi: ExtensionAPI): void {
 				startLine?: number;
 				endLine?: number;
 			};
+			const anchorError = validateAnchor(p);
+			if (anchorError) return errResult(`Cannot register issue: ${anchorError}`);
 			const issue = store.addIssue(p);
 			persist();
 			refreshWidget(ctx);
@@ -469,7 +494,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 		name: "update_mr_issue",
 		label: "Update MR Issue",
 		description:
-			"Part of the /mr-review workflow. Edit a registered issue or change its state. Use state 'rejected' to dismiss an issue or 'open' to reopen one. Reopening clears the drafted note AND the posted record, so if the issue was already posted, re-posting may create a second comment on GitLab when the new body differs. The 'commented' state is reached only through draft_mr_note approval. Use this to repair an anchor GitLab rejected: pass file/startLine/endLine for a line inside a diff hunk, or clearAnchor to post the issue as a general note. Fixing an anchor keeps the approved note and leaves the issue queued for the next post_mr_review.",
+			"Part of the /mr-review workflow. Edit a registered issue or change its state. Use state 'rejected' to dismiss an issue or 'open' to reopen one. Reopening clears the drafted note AND the posted record, so if the issue was already posted, re-posting may create a second comment on GitLab when the new body differs. The 'commented' state is reached only through draft_mr_note approval. Use this to repair an anchor GitLab rejected: pass file/startLine/endLine for a line inside a diff hunk, or postAsGeneral to post the issue as a general note instead. Passing a new startLine also re-enables inline posting. Fixing an anchor keeps the approved note and leaves the issue queued for the next post_mr_review.",
 		parameters: Type.Object({
 			issueId: Type.Number({ description: "Id of the issue to update" }),
 			severity: Type.Optional(SEVERITY),
@@ -478,10 +503,10 @@ export default function mrReview(pi: ExtensionAPI): void {
 			file: Type.Optional(Type.String()),
 			startLine: Type.Optional(Type.Number()),
 			endLine: Type.Optional(Type.Number()),
-			clearAnchor: Type.Optional(
+			postAsGeneral: Type.Optional(
 				Type.Boolean({
 					description:
-						"Drop file/startLine/endLine so the issue posts as a general MR note instead of an inline comment",
+						"Post as a general MR note instead of an inline comment. The recorded file/startLine are kept and quoted at the top of the posted body, so the reader still knows what the note is about; pass a corrected file alongside if the path is wrong.",
 				}),
 			),
 			state: Type.Optional(StringEnum(["open", "rejected"] as const)),
@@ -496,11 +521,18 @@ export default function mrReview(pi: ExtensionAPI): void {
 				file?: string;
 				startLine?: number;
 				endLine?: number;
-				clearAnchor?: boolean;
+				postAsGeneral?: boolean;
 				state?: "open" | "rejected";
 			};
-			const issue = store.updateIssue(p.issueId, p);
-			if (!issue) return errResult(`No issue #${p.issueId} in the current review.`);
+			const outcome = store.updateIssue(p.issueId, p);
+			if (!outcome.ok) {
+				return errResult(
+					outcome.reason === "not-found"
+						? `No issue #${p.issueId} in the current review.`
+						: `Issue #${p.issueId} left unchanged: ${outcome.error}`,
+				);
+			}
+			const issue = outcome.issue;
 			persist();
 			refreshWidget(ctx);
 			return okResult(

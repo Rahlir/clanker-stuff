@@ -22,10 +22,68 @@ export interface Issue {
 	file?: string;
 	startLine?: number;
 	endLine?: number;
+	/**
+	 * Post as a general note even though a position is recorded.
+	 *
+	 * Set when GitLab rejects the anchor. The position is kept rather than
+	 * deleted so the issue list still shows where the finding is and the posted
+	 * body can name it (see `composeBody`).
+	 */
+	postAsGeneral?: boolean;
 	state: IssueState;
 	/** Posted comment body; set when the issue becomes `commented`. */
 	note?: string;
 	posted?: boolean;
+}
+
+export interface AnchorFields {
+	file?: string;
+	startLine?: number;
+	endLine?: number;
+}
+
+/**
+ * Whether the note posts as an inline diff comment.
+ *
+ * A line without a file cannot be anchored, and glab must never receive
+ * `--file` without `--line`: it silently anchors such a note to the first line
+ * of the file's first diff hunk (verified against GitLab 19.3 CE and EE), which
+ * pins the comment to code it is not about.
+ */
+export function isInlineAnchor(issue: Issue): boolean {
+	return !issue.postAsGeneral && !!issue.file && !!issue.startLine;
+}
+
+/**
+ * Reject anchors that carry line information we cannot act on.
+ *
+ * An anchor is either complete (file plus startLine, endLine optional) or
+ * absent.
+ *
+ * Returns an agent-facing message, or undefined when the anchor is usable.
+ */
+export function validateAnchor(a: AnchorFields): string | undefined {
+	const hasFile = !!a.file?.trim();
+	if (a.startLine !== undefined) {
+		if (!Number.isInteger(a.startLine) || a.startLine < 1) {
+			return `startLine must be a positive integer, got ${a.startLine}.`;
+		}
+		if (!hasFile) {
+			return "startLine requires file: a line number alone cannot be anchored. Pass the file too, or drop the line.";
+		}
+	}
+	if (a.endLine !== undefined) {
+		if (!Number.isInteger(a.endLine) || a.endLine < 1) {
+			return `endLine must be a positive integer, got ${a.endLine}.`;
+		}
+		if (a.startLine === undefined) {
+			return "endLine requires startLine: the end of a range alone cannot be anchored. Pass startLine too, or drop endLine to comment on the file as a whole.";
+		}
+		if (a.endLine < a.startLine) {
+			return `endLine (${a.endLine}) must not be before startLine (${a.startLine}).`;
+		}
+	}
+	return undefined;
 }
 
 export interface ReviewData {
@@ -43,12 +101,34 @@ export interface IssueInput {
 	endLine?: number;
 }
 
+export type UpdateOutcome =
+	| { ok: true; issue: Issue }
+	| { ok: false; reason: "not-found" }
+	| { ok: false; reason: "invalid-anchor"; error: string };
+
 export interface IssueCounts {
 	total: number;
 	open: number;
 	commented: number;
 	rejected: number;
 	posted: number;
+}
+
+// An empty or blank path is the same as no path, and is the only way a caller
+// can take a wrong file back off an issue.
+function normalizeFile(file?: string): string | undefined {
+	return file?.trim() || undefined;
+}
+
+function mergeAnchor(issue: Issue, fields: AnchorFields): AnchorFields {
+	const merged: AnchorFields = { file: issue.file, startLine: issue.startLine, endLine: issue.endLine };
+	if (fields.file !== undefined) merged.file = normalizeFile(fields.file);
+	if (fields.startLine !== undefined) {
+		merged.startLine = fields.startLine;
+		if (fields.endLine === undefined) merged.endLine = undefined;
+	}
+	if (fields.endLine !== undefined) merged.endLine = fields.endLine;
+	return merged;
 }
 
 export class ReviewStore {
@@ -89,13 +169,14 @@ export class ReviewStore {
 		return { mr: this.mr ?? "", issues: this.issues.map((i) => ({ ...i })), nextId: this.nextId };
 	}
 
+	/** Callers validate the anchor with `validateAnchor` first; this trusts it. */
 	addIssue(input: IssueInput): Issue {
 		const issue: Issue = {
 			id: this.nextId++,
 			severity: input.severity,
 			summary: input.summary,
 			details: input.details,
-			file: input.file,
+			file: normalizeFile(input.file),
 			startLine: input.startLine,
 			endLine: input.endLine,
 			state: "open",
@@ -111,40 +192,43 @@ export class ReviewStore {
 	/**
 	 * Apply partial edits. `state` callers must restrict to open/rejected.
 	 *
-	 * `clearAnchor` drops file/startLine/endLine, turning an inline note into a
-	 * general one; undefined fields alone cannot express that. It is applied
-	 * before the explicit fields so passing both replaces the anchor rather than
-	 * discarding the replacement. The drafted note is untouched either way, so a
-	 * queued issue stays queued after an anchor fix.
+	 * Validation runs on the merged anchor, not on the incoming fields: adding an
+	 * `endLine` to an issue that already has a `startLine` is valid, the same call
+	 * against an unanchored issue is not. A rejected update changes nothing, so
+	 * the issue never keeps a half-applied anchor.
 	 *
 	 * A `startLine` without an `endLine` also drops any existing `endLine`. The
 	 * anchor is one unit: repointing the start of an 88-95 range while keeping 95
 	 * would post `--line 40:95`, re-raising the same out-of-diff rejection the
 	 * caller was trying to fix. Restate `endLine` to keep a range.
+	 *
+	 * The drafted note is never touched by an anchor edit, so a queued issue stays
+	 * queued after a repair.
 	 */
 	updateIssue(
 		id: number,
 		fields: Partial<Pick<Issue, "severity" | "summary" | "details" | "file" | "startLine" | "endLine">> & {
 			state?: "open" | "rejected";
-			clearAnchor?: boolean;
+			postAsGeneral?: boolean;
 		},
-	): Issue | undefined {
+	): UpdateOutcome {
 		const issue = this.getIssue(id);
-		if (!issue) return undefined;
-		if (fields.clearAnchor) {
-			issue.file = undefined;
-			issue.startLine = undefined;
-			issue.endLine = undefined;
-		}
+		if (!issue) return { ok: false, reason: "not-found" };
+
+		const anchor = mergeAnchor(issue, fields);
+		const error = validateAnchor(anchor);
+		if (error) return { ok: false, reason: "invalid-anchor", error };
+
+		issue.file = anchor.file;
+		issue.startLine = anchor.startLine;
+		issue.endLine = anchor.endLine;
+		// An explicit flag wins; otherwise a fresh startLine means "anchor it here",
+		// which is the whole point of repointing a previously demoted issue.
+		if (fields.postAsGeneral !== undefined) issue.postAsGeneral = fields.postAsGeneral || undefined;
+		else if (fields.startLine !== undefined) issue.postAsGeneral = undefined;
 		if (fields.severity !== undefined) issue.severity = fields.severity;
 		if (fields.summary !== undefined) issue.summary = fields.summary;
 		if (fields.details !== undefined) issue.details = fields.details;
-		if (fields.file !== undefined) issue.file = fields.file;
-		if (fields.startLine !== undefined) {
-			issue.startLine = fields.startLine;
-			if (fields.endLine === undefined) issue.endLine = undefined;
-		}
-		if (fields.endLine !== undefined) issue.endLine = fields.endLine;
 		if (fields.state !== undefined) {
 			issue.state = fields.state;
 			// Reopening clears a prior note/post so it can be re-drafted cleanly.
@@ -153,7 +237,7 @@ export class ReviewStore {
 				issue.posted = undefined;
 			}
 		}
-		return issue;
+		return { ok: true, issue };
 	}
 
 	setNote(id: number, body: string): Issue | undefined {

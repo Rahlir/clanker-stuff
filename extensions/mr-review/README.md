@@ -27,7 +27,7 @@ outcome into the issue store. This is a plain in-repo import, so mr-review needs
    registers them with `register_mr_issue`. Dismiss/reopen via `update_mr_issue`.
 4. `post_mr_review` (agent) or `/mr-post` (you) opens a confirm + preview screen,
    then posts the approved notes. Issues with `file` + `startLine` post as inline
-   diff comments; the rest as general MR notes.
+   diff comments; the rest as general MR notes (see [Anchors](#anchors)).
 
 State persists across restarts; re-running `/mr-review` on the same MR resumes.
 
@@ -60,7 +60,7 @@ registered as callable and cost no prompt tokens.
 
 - `register_mr_issue(severity, summary, details, file?, startLine?, endLine?)`
 - `draft_mr_note(issueId, body)`
-- `update_mr_issue(issueId, { severity?, summary?, details?, file?, lines?, clearAnchor?, state? })`
+- `update_mr_issue(issueId, { severity?, summary?, details?, file?, lines?, postAsGeneral?, state? })`
 - `post_mr_review()`
 
 `draft_mr_note` and `post_mr_review` are declared `executionMode: "sequential"`,
@@ -85,6 +85,35 @@ module shared with the `annotate` extension. mr-review supplies the MR-specific
 framing (title, severity tag, `file:line` location, the issue summary/details as
 context) and maps the result into its `ReviewStore`.
 
+## Anchors
+
+An anchor is either **complete** (`file` + `startLine`, `endLine` optional) or
+**absent**. `file` on its own is legal and means a finding about the whole file.
+Everything else (a line without a file, an `endLine` without a `startLine`, a
+reversed or non-positive range) is refused by `validateAnchor` at the tool
+boundary.
+
+Only a complete anchor posts inline. **`--file` is never passed without
+`--line`.** glab documents that combination as a file-level comment, _but it
+actually anchors the note to the first line of the file's first diff hunk_, and
+the REST `position_type: "file"` that would do the right thing is accepted and
+silently dropped (both verified against GitLab 19.3, CE and EE). So there is no
+such thing as a file-scoped comment.
+
+Whenever a note has a position but posts general, `composeBody` prefixes the
+body with the path and lines:
+
+```
+**`src/a.ts:88-95`**
+
+<the approved note>
+```
+
+Otherwise the reviewee gets a comment with no clue what it is about, since the
+anchor we recorded is never shown to them. The prefix is added at post time
+rather than folded into the note, so the approved text stays the user's. The
+issue list marks these as `src/a.ts:88-95 (general)`.
+
 ## Posting safety
 
 Notes are posted with `execFile("glab", ...)` (no shell), so backticks, `$`, and
@@ -104,6 +133,19 @@ request, so the agent used to loop until the user interrupted it.
 found in diff`, `invalid line range`, GitLab's `must be a valid line code`)
 from genuinely transient failures. The "re-run `post_mr_review`" hint is now
 only emitted when a retryable failure occurred; a rejected anchor instead
-returns instructions to repair it with `update_mr_issue` first, either by
-repointing it at a line inside a diff hunk or by passing `clearAnchor: true` to
-fall back to a general note.
+returns instructions to repair it with `update_mr_issue` first.
+
+The repair depends on which part GitLab refused, so the classifier reports
+`anchor-line` and `anchor-file` separately:
+
+| Rejection | Remedy offered to the agent |
+|---|---|
+| `anchor-line` (line outside the diff) | repoint with `update_mr_issue(issueId, file, startLine)`, or `postAsGeneral: true` |
+| `anchor-file` (file outside the diff) | `postAsGeneral: true` only; no line number can work |
+
+`postAsGeneral` keeps `file`/`startLine`/`endLine` on the issue rather than
+deleting them, so the issue list still shows where the finding is and the posted
+body can quote it. Passing a fresh `startLine` later re-enables inline posting.
+The guidance also tells the agent to re-draft through `draft_mr_note` when the
+wording leans on the note being inline ("this line", "here"), which keeps the
+posted text something the user approved.

@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ReviewStore } from "./state.ts";
+import { ReviewStore, validateAnchor } from "./state.ts";
 
 const sampleInput = {
 	severity: "major" as const,
@@ -70,29 +70,56 @@ test("reopening clears note and posted flag", () => {
 	assert.equal(after?.posted, undefined);
 });
 
-test("clearAnchor drops the position but keeps the approved note queued", () => {
+test("postAsGeneral keeps the position and the approved note queued", () => {
 	const store = new ReviewStore();
 	store.start("mr");
 	const issue = store.addIssue({ ...sampleInput, endLine: 14 });
 	store.setNote(issue.id, "please fix");
-	store.updateIssue(issue.id, { clearAnchor: true });
+	store.updateIssue(issue.id, { postAsGeneral: true });
 	const after = store.getIssue(issue.id);
-	assert.equal(after?.file, undefined);
-	assert.equal(after?.startLine, undefined);
-	assert.equal(after?.endLine, undefined);
+	assert.equal(after?.postAsGeneral, true);
+	assert.equal(after?.file, "src/a.ts", "the position survives so the body can name it");
+	assert.equal(after?.startLine, 10);
+	assert.equal(after?.endLine, 14);
 	assert.equal(after?.note, "please fix", "an anchor fix must not discard the approved note");
 	assert.deepEqual(store.queued().map((i) => i.id), [issue.id], "issue stays queued for the next post");
 });
 
-test("clearAnchor combined with a new position sets the new position", () => {
+test("postAsGeneral combined with a corrected path keeps the new path", () => {
 	const store = new ReviewStore();
 	store.start("mr");
 	const issue = store.addIssue({ ...sampleInput, endLine: 14 });
-	store.updateIssue(issue.id, { clearAnchor: true, file: "src/b.ts", startLine: 40 });
+	store.updateIssue(issue.id, { postAsGeneral: true, file: "src/b.ts" });
 	const after = store.getIssue(issue.id);
 	assert.equal(after?.file, "src/b.ts");
+	assert.equal(after?.postAsGeneral, true);
+});
+
+test("repointing at a new line re-enables inline posting", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue(sampleInput);
+	store.updateIssue(issue.id, { postAsGeneral: true });
+	store.updateIssue(issue.id, { startLine: 40 });
+	assert.equal(store.getIssue(issue.id)?.postAsGeneral, undefined);
+});
+
+test("an explicit postAsGeneral wins over a startLine in the same call", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue(sampleInput);
+	store.updateIssue(issue.id, { postAsGeneral: true, startLine: 40 });
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.postAsGeneral, true);
 	assert.equal(after?.startLine, 40);
-	assert.equal(after?.endLine, undefined, "the stale range end is not carried over");
+});
+
+test("an empty file takes the path back off an issue", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue({ severity: "minor", summary: "s", details: "d", file: "src/a.ts" });
+	store.updateIssue(issue.id, { file: "  " });
+	assert.equal(store.getIssue(issue.id)?.file, undefined);
 });
 
 test("repointing an anchor keeps the note and the commented state", () => {
@@ -137,15 +164,63 @@ test("extending the range end alone leaves the start alone", () => {
 	assert.equal(after?.endLine, 92);
 });
 
-test("clearAnchor alongside a state change applies both", () => {
+test("postAsGeneral alongside a state change applies both", () => {
 	const store = new ReviewStore();
 	store.start("mr");
 	const issue = store.addIssue(sampleInput);
 	store.setNote(issue.id, "please fix");
-	store.updateIssue(issue.id, { clearAnchor: true, state: "rejected" });
+	store.updateIssue(issue.id, { postAsGeneral: true, state: "rejected" });
 	const after = store.getIssue(issue.id);
-	assert.equal(after?.file, undefined);
+	assert.equal(after?.postAsGeneral, true);
 	assert.equal(after?.state, "rejected");
+});
+
+test("validateAnchor accepts complete, file-only, and absent anchors", () => {
+	assert.equal(validateAnchor({}), undefined);
+	assert.equal(validateAnchor({ file: "a.ts" }), undefined, "a file alone is a file-scoped finding");
+	assert.equal(validateAnchor({ file: "a.ts", startLine: 10 }), undefined);
+	assert.equal(validateAnchor({ file: "a.ts", startLine: 10, endLine: 10 }), undefined);
+	assert.equal(validateAnchor({ file: "a.ts", startLine: 10, endLine: 20 }), undefined);
+});
+
+test("validateAnchor rejects line info that cannot be anchored", () => {
+	assert.match(validateAnchor({ file: "a.ts", endLine: 20 }) ?? "", /endLine requires startLine/);
+	assert.match(validateAnchor({ endLine: 20 }) ?? "", /endLine requires startLine/);
+	assert.match(validateAnchor({ startLine: 10 }) ?? "", /startLine requires file/);
+	assert.match(validateAnchor({ file: "   ", startLine: 10 }) ?? "", /startLine requires file/);
+	assert.match(validateAnchor({ file: "a.ts", startLine: 20, endLine: 10 }) ?? "", /must not be before/);
+	assert.match(validateAnchor({ file: "a.ts", startLine: 0 }) ?? "", /positive integer/);
+	assert.match(validateAnchor({ file: "a.ts", startLine: 1.5 }) ?? "", /positive integer/);
+});
+
+test("updateIssue validates the merged anchor, not the incoming fields", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const anchored = store.addIssue(sampleInput);
+	assert.equal(store.updateIssue(anchored.id, { endLine: 14 }).ok, true, "an existing startLine makes this valid");
+
+	const general = store.addIssue({ severity: "minor", summary: "s", details: "d" });
+	const outcome = store.updateIssue(general.id, { endLine: 14 });
+	assert.equal(outcome.ok, false);
+	assert.equal(outcome.ok === false && outcome.reason, "invalid-anchor");
+});
+
+test("a rejected update leaves the issue untouched", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const issue = store.addIssue(sampleInput);
+	const outcome = store.updateIssue(issue.id, { summary: "new summary", startLine: 20, endLine: 10 });
+	assert.equal(outcome.ok, false);
+	const after = store.getIssue(issue.id);
+	assert.equal(after?.summary, "unchecked null", "no field is applied when the anchor is invalid");
+	assert.equal(after?.startLine, 10);
+});
+
+test("updateIssue reports a missing issue apart from a bad anchor", () => {
+	const store = new ReviewStore();
+	store.start("mr");
+	const outcome = store.updateIssue(99, { summary: "x" });
+	assert.equal(outcome.ok === false && outcome.reason, "not-found");
 });
 
 test("counts reflect each lifecycle state", () => {

@@ -23,7 +23,7 @@ const ROWS_PER_NOTE = 2;
 export interface PreviewItem {
 	id: number;
 	severity: Severity;
-	inline: boolean;
+	/** `locationLabel` output, which already marks a positioned-but-general note. */
 	location: string;
 	body: string;
 }
@@ -89,7 +89,7 @@ function runComponent(ctx: ExtensionContext, items: PreviewItem[]): Promise<numb
 				const box = selected.has(item.id) ? theme.fg("success", "\u2611") : theme.fg("dim", "\u2610");
 				const marker = isCursor ? theme.fg("accent", "\u25b8") : " ";
 				const sev = theme.fg(severityColor(item.severity), `[${item.severity}]`);
-				const kind = theme.fg("muted", `${item.inline ? "inline" : "general"} ${item.location}`);
+				const kind = theme.fg("muted", item.location);
 				const head = `${marker} ${box} ${theme.fg("muted", `#${item.id}`)} ${sev} ${kind}`;
 				middle.push(truncateToWidth(head, width));
 				const excerpt = item.body.replace(/\s+/g, " ").trim();
