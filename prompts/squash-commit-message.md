@@ -29,48 +29,24 @@ Rules:
   message**.
 - Ensure every line is wrapped to 72 chars
 
-Examples:
+Learn this repository's conventions from its history before writing:
 
----
+1. Run `git log main -n 30 --format='%h%n%B---'`.
+2. Take scope names, subject phrasing, and body style from those commits.
+   Prefer commits that have a body as the model for body style.
+3. Where history disagrees with the rules above, follow the rules.
+4. Write a body whenever the change is not trivial, even if recent commits
+   have none.
+5. If history is empty or does not use Conventional Commits, rely on the
+   rules alone.
 
-feat(auth): add OAuth2 login support
+Breaking change example (history rarely demonstrates this one):
 
-Implements the full OAuth2 workflow for authenticating the user to the
-application. The implementation lives in `auth/oauth2.py`.
-
----
-
-fix: prevent race condition in request handler
-
-The request handler had a race condition when multiple requests were processed
-concurrently. This commit adds lock mechanism with `asyncio.Lock` that prevents
-these race conditions.
-
----
-
+```
 feat!: drop support for Node 6
 
 BREAKING CHANGE: Node 6 is no longer supported.
+```
 
----
-
-feat(memory): add durable per-project memory extension
-
-Adds a new `memory` extension that gives every project a persistent
-`memory.md` loaded into context at session start. The agent appends
-entries only on explicit user instruction via `add_memory`; users
-prune the file with `/edit-memory`.
-
-Key design points:
-- File resolves to `<root>/.pi/memory.md` for trusted repos or
-  `<agent-dir>/memory/<encoded-root>/memory.md` otherwise, keyed
-  to match pi's session-directory encoding
-- Submodules climb to the superproject; linked worktrees collapse
-  onto the main checkout
-- Duplicate detection (case/spacing/punctuation-insensitive) rejects
-  literal repeats at tool-call time
-
----
-
-Now output the commit message. First character **must be the type keyword**. No
-backticks, no "Here is...".
+Once you have inspected history, output the commit message. First character
+**must be the type keyword** (feat / chore / etc.). No backticks, no "Here is...".
