@@ -21,6 +21,8 @@
  * `lib/shell-tokens.ts`, so `cd` inside quotes, heredoc bodies, `$(...)`, or
  * `(...)` never triggers. When the target cannot be resolved statically
  * (variables, `cd -`), the guard cannot prove a no-op and lets it through.
+ * Only `cd`s before the first non-no-op `cd` are checked: `cd /tmp; ...; cd
+ * <cwd>` legitimately returns to the cwd.
  */
 
 import { realpathSync } from "node:fs";
@@ -109,6 +111,10 @@ export function analyzeCommand(command: string, cwd: string): CdGuardVerdict {
     const cd = cdTarget(seg);
     if (!cd) continue;
     if (CHECK_CD_NOOP && isNoop(cd.target, cwd)) return { block: true, reason: noopReason(cwd) };
+    // Past a real cd the shell's cwd is elsewhere or unknowable (the cd may
+    // fail under `||`, run in a pipe subshell, ...), so a later `cd <cwd>` may
+    // be necessary.
+    break;
   }
   return { block: false };
 }

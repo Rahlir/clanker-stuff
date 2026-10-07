@@ -38,6 +38,8 @@ Prose does not override the reflex; a deterministic interceptor does.
 - `cd` written *as data*: inside quotes (`sh -c "cd ..."`) or heredoc bodies.
 - Any `cd` whose target is not statically resolvable (`cd "$SOMEDIR"`, `cd -`):
   the guard cannot prove a no-op, so it lets it through.
+- Any `cd` after the first real `cd` in the command (`cd /tmp; ...; cd <cwd>`):
+  the cwd has changed or is unknown, so returning may be necessary.
 
 ## Configuration
 

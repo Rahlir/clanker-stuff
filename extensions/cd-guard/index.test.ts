@@ -47,6 +47,9 @@ const cases: Case[] = [
 	{ command: "cd -", block: false, note: "$OLDPWD, unresolvable" },
 	{ command: "cd $SOMEWHERE", block: false, note: "unexpanded var, unresolvable" },
 	{ command: "FOO=bar cd /usr", block: false, note: "env prefix, other dir" },
+	{ command: `cd /usr; ls; cd ${cwd} && ls`, block: false, note: "returning to cwd after a real cd" },
+	{ command: `cd /usr | cat; cd ${cwd}`, block: false, note: "after any real cd, fail open" },
+	{ command: `ls; cd ${cwd} && ls`, block: true, note: "no-op cd after non-cd segments" },
 
 	// Allowed regardless.
 	{ command: "(cd . && ls)", block: false, note: "subshell, depth > 0 not inspected" },
