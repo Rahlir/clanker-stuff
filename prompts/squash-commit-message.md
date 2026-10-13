@@ -28,12 +28,13 @@ Rules:
   **no** explanation. **Your entire raw output will be copied directly as the squash commit
   message**.
 - Ensure every line is wrapped to 72 chars
+- If you include body, use 4 to 8 lines. If you include bullets in the body, don't go beyond
+  5 bullet points.
 
 Learn this repository's conventions from its history before writing:
 
 1. Run `git log main -n 30 --format='%h%n%B---'`.
 2. Take scope names, subject phrasing, and body style from those commits.
-   Prefer commits that have a body as the model for body style.
 3. Where history disagrees with the rules above, follow the rules.
 4. Write a body whenever the change is not trivial, even if recent commits
    have none.
