@@ -1,0 +1,23 @@
+{
+  "instances": {
+    "corp": { "url": "https://sonarqube.example.com", "tokenEnv": "SONARQUBE_CORP_TOKEN" }
+  },
+  "repos": [
+    {
+      "remote": "gitlab.example.com/team/single-scan-repo",
+      "instance": "corp",
+      "projects": [
+        { "key": "team:service-a", "prefix": "" },
+        { "key": "team:service-b", "prefix": "" }
+      ]
+    },
+    {
+      "remote": "gitlab.example.com/team/monorepo",
+      "instance": "corp",
+      "projects": [
+        { "key": "team.SONAR.service-c", "prefix": "services/service-c" },
+        { "key": "team.SONAR.frontend", "prefix": "apps/frontend" }
+      ]
+    }
+  ]
+}
