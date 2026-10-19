@@ -888,6 +888,20 @@ async function credentialFiles(client, targets, paths) {
   return complete ? out : new Set(paths);
 }
 
+// Credential scans cover every mapped project of the repo, whatever is being
+// displayed (--project, projects the scope skipped), because projects may
+// analyze the same files. A project without the given MR or branch yields no
+// issues for it, and its main analysis is still scanned as the baseline.
+function credentialTargets(repo, params, target) {
+  return repo.projects.map((project) => ({ project, params, target }));
+}
+
+// The resolved scope as query params, plus the MR's target branch.
+function scopeAnalysis(scope) {
+  const params = scope.kind === "mr" ? { pullRequest: scope.key } : scope.kind === "branch" ? { branch: scope.key } : {};
+  return { params, target: scope.targets.find((t) => t.target)?.target };
+}
+
 // Every local path an issue's output may print code from.
 const printedPaths = (issue, project, path) => [
   path,
@@ -1052,11 +1066,10 @@ async function cmdPlan(_args, flags) {
     );
 
   const counts = Map.groupBy(items, (it) => it.loc.status);
+  const analysis = scopeAnalysis(ctx.scope);
   const withheld = await credentialFiles(
     ctx.client,
-    // Every project in scope: prefixes may overlap, so a file can belong to a
-    // project that has no item in this plan.
-    ctx.scope.targets,
+    credentialTargets(ctx.repo, analysis.params, analysis.target),
     new Set(items.flatMap((it) => printedPaths(it.issue, it.project, it.path))),
   );
   const out = scopeHeader(ctx);
@@ -1137,13 +1150,10 @@ async function cmdIssue(args, flags) {
     const pr = issue.pullRequest
       ? (await loadAnalyses(client, project)).prs.find((p) => p.key === issue.pullRequest)
       : null;
-    const target = pr?.target ?? pr?.base;
-    // Other projects of the same repo may analyze the same files, so they are
-    // scanned too. An MR missing from one of them simply yields no issues.
-    const projects = [project, ...(mapped?.repo.projects ?? []).filter((p) => p.key !== project.key)];
+    // `root` is only set for a mapped project, so `mapped` exists here.
     withheld = await credentialFiles(
       client,
-      projects.map((p) => ({ project: p, params: scope.params, target })),
+      credentialTargets(mapped.repo, scope.params, pr?.target ?? pr?.base),
       new Set(printedPaths(issue, project, path)),
     );
   }
@@ -1423,9 +1433,10 @@ async function cmdCoverage(_args, flags) {
   });
   // Coverage prints code even without a checkout (Sonar's copy), so the
   // credential check applies here regardless of `root`, JSON included.
+  const analysis = scopeAnalysis(ctx.scope);
   const withheld = await credentialFiles(
     ctx.client,
-    ctx.scope.targets,
+    credentialTargets(ctx.repo, analysis.params, analysis.target),
     new Set(top.map((f) => f.path)),
   );
   for (const f of top)
