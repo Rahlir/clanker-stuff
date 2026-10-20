@@ -8,8 +8,13 @@
  * child process into `applyEventLine` / `appendStderr` and blocks on `raceAbort`.
  */
 
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, Usage } from "@earendil-works/pi-ai";
 
+/**
+ * Usage summary persisted in tool-result `details`. Old sessions render it on resume and
+ * session analysis reads it as the cost source for logs that predate top-level `usage`,
+ * so keep its shape stable.
+ */
 export interface ReviewUsage {
   input: number;
   output: number;
@@ -26,7 +31,9 @@ export type ActivityItem =
 /** Everything accumulated from one reviewer subprocess. */
 export interface ReviewState {
   messages: Message[];
-  usage: ReviewUsage;
+  /** Reviewer spend in pi's shape, handed to pi as the tool result's `usage`. */
+  usage: Usage;
+  turns: number;
   activity: ActivityItem[];
   streamingText: string;
   stderr: string;
@@ -45,7 +52,15 @@ const STDERR_TRUNCATION_SUFFIX = "\n... (truncated)";
 export function createReviewState(model: string): ReviewState {
   return {
     messages: [],
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    turns: 0,
     activity: [],
     streamingText: "",
     stderr: "",
@@ -53,6 +68,45 @@ export function createReviewState(model: string): ReviewState {
     parseFailures: 0,
     lastParseError: null,
   };
+}
+
+/**
+ * Add one message's usage into `total`, mirroring pi's `combineUsage`: the optional
+ * token splits appear once any message reports them. Missing fields count as zero
+ * because reviewer events are untyped JSON, and `total` must stay complete since pi
+ * reads e.g. `usage.cost.total` without checks.
+ */
+function addUsage(total: Usage, u: Partial<Usage>): void {
+  total.input += u.input || 0;
+  total.output += u.output || 0;
+  total.cacheRead += u.cacheRead || 0;
+  total.cacheWrite += u.cacheWrite || 0;
+  if (u.cacheWrite1h !== undefined) total.cacheWrite1h = (total.cacheWrite1h ?? 0) + u.cacheWrite1h;
+  if (u.reasoning !== undefined) total.reasoning = (total.reasoning ?? 0) + u.reasoning;
+  total.totalTokens += u.totalTokens || 0;
+  total.cost.input += u.cost?.input || 0;
+  total.cost.output += u.cost?.output || 0;
+  total.cost.cacheRead += u.cost?.cacheRead || 0;
+  total.cost.cacheWrite += u.cost?.cacheWrite || 0;
+  total.cost.total += u.cost?.total || 0;
+}
+
+/** The `details.usage` summary of `state`. */
+export function reviewUsage(state: ReviewState): ReviewUsage {
+  const { input, output, cacheRead, cacheWrite, cost } = state.usage;
+  return { input, output, cacheRead, cacheWrite, cost: cost.total, turns: state.turns };
+}
+
+/**
+ * Mark a finished job as handed to the agent and return the usage that delivery should
+ * report. Only the first delivery gets it, so the spend counts once in pi's session
+ * totals (footer, `/session`) even when the result is fetched again (status, a second
+ * await, cancel after the fact).
+ */
+export function claimUsage(job: { delivered?: boolean; state: ReviewState }): Usage | undefined {
+  if (job.delivered) return undefined;
+  job.delivered = true;
+  return structuredClone(job.state.usage);
 }
 
 export type ParsedLine = { ok: true; event: Record<string, unknown> } | { ok: false; error: string };
@@ -101,15 +155,8 @@ export function applyEvent(state: ReviewState, event: Record<string, unknown>): 
     const msg = event.message as Message;
     state.messages.push(msg);
     if (msg.role === "assistant") {
-      state.usage.turns++;
-      const u = msg.usage;
-      if (u) {
-        state.usage.input += u.input || 0;
-        state.usage.output += u.output || 0;
-        state.usage.cacheRead += u.cacheRead || 0;
-        state.usage.cacheWrite += u.cacheWrite || 0;
-        state.usage.cost += u.cost?.total || 0;
-      }
+      state.turns++;
+      if (msg.usage) addUsage(state.usage, msg.usage);
       if (msg.model) state.resolvedModel = msg.model;
       // Finalize the streamed text as a discrete activity item.
       if (state.streamingText) {

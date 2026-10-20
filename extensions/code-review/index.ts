@@ -10,6 +10,9 @@
  *     `code_review_await`, peek without blocking via `code_review_status`, or stop it
  *     with `code_review_cancel`.
  *
+ * Reviewer spend is reported as the tool result's `usage` on the first delivery of
+ * each job's final result, so pi's session totals (footer, `/session`) include it.
+ *
  * Concurrency comes from starting several reviews (native parallel tool calls run
  * them at once), one model per job.
  *
@@ -29,6 +32,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Usage } from "@earendil-works/pi-ai";
 import type {
   AgentToolResult,
   AgentToolUpdateCallback,
@@ -46,6 +50,7 @@ import {
   type ActivityItem,
   appendStderr,
   applyEventLine,
+  claimUsage,
   createReviewState,
   getFinalOutput,
   MAX_ACTIVITY_ITEMS,
@@ -53,6 +58,7 @@ import {
   raceAbort,
   type ReviewState,
   type ReviewUsage,
+  reviewUsage,
 } from "./review-state.ts";
 
 interface ReviewConfig {
@@ -95,6 +101,7 @@ interface ReviewResult {
   content: { type: "text"; text: string }[];
   details: ReviewDetails;
   isError?: boolean;
+  usage?: Usage;
 }
 
 type ReviewUpdate = AgentToolUpdateCallback<ReviewDetails>;
@@ -124,7 +131,10 @@ interface Job {
   cancelReason?: string;
   killTimer?: ReturnType<typeof setTimeout>;
   errorBeforeClose?: Error;
-  /** True once the terminal outcome has been handed to the agent; only then is it prunable. */
+  /**
+   * True once the terminal outcome has been handed to the agent; only then is it
+   * prunable. Set only through `deliver`, which reports usage on that delivery.
+   */
   delivered?: boolean;
 }
 
@@ -466,8 +476,7 @@ async function attachAndWait(
   // Already finished: hand back the stored outcome (marking it collected) regardless
   // of signal state.
   if (job.status !== "running" && job.outcome) {
-    job.delivered = true;
-    return job.outcome;
+    return deliver(job, job.outcome);
   }
 
   if (onUpdate) job.listeners.add(onUpdate);
@@ -478,14 +487,11 @@ async function attachAndWait(
     if (raced === ABORTED) {
       if (onAbort === "kill") {
         killJob(job, "aborted");
-        const outcome = await job.done;
-        job.delivered = true;
-        return outcome;
+        return deliver(job, await job.done);
       }
       return stillRunningResult(job);
     }
-    job.delivered = true;
-    return raced;
+    return deliver(job, raced);
   } finally {
     if (onUpdate) job.listeners.delete(onUpdate);
     // Detaching may return a still-running job to the widget.
@@ -507,13 +513,19 @@ function baseDetails(
     mode,
     jobId: job.id,
     model: job.state.resolvedModel,
-    usage: { ...job.state.usage },
+    usage: reviewUsage(job.state),
     running,
     task: job.task,
     activity: job.state.activity,
     streamingText: job.state.streamingText,
     ...extra,
   };
+}
+
+/** Hand a terminal result to the agent, with usage on the first delivery (see `claimUsage`). */
+function deliver(job: Job, result: ReviewResult): ReviewResult {
+  const usage = claimUsage(job);
+  return usage ? { ...result, usage } : result;
 }
 
 function partialResult(job: Job): ReviewResult {
@@ -581,8 +593,7 @@ function snapshotLine(snapshot: JobSnapshot): string {
 
 function statusResult(job: Job): ReviewResult {
   if (job.status !== "running" && job.outcome) {
-    job.delivered = true;
-    return { ...job.outcome, details: { ...job.outcome.details, mode: "status" } };
+    return deliver(job, { ...job.outcome, details: { ...job.outcome.details, mode: "status" } });
   }
   const output = getFinalOutput(job.state.messages);
   const body = output ? `\n\n${output}` : "\n\n(no output yet)";
@@ -944,19 +955,17 @@ export default function (pi: ExtensionAPI) {
       const job = jobs.get(params.jobId);
       if (!job) return notFoundResult(params.jobId, "cancel");
       if (job.status !== "running") {
-        job.delivered = true;
-        return {
+        return deliver(job, {
           content: [{ type: "text", text: `Review ${job.id} already ${job.status}; nothing to cancel.` }],
           details: { mode: "cancel", jobId: job.id, model: job.state.resolvedModel, running: false },
-        };
+        });
       }
       killJob(job, "cancelled");
       await job.done;
-      job.delivered = true;
-      return {
+      return deliver(job, {
         content: [{ type: "text", text: `Cancelled review ${job.id}.` }],
         details: { mode: "cancel", jobId: job.id, model: job.state.resolvedModel, running: false, cancelled: true },
-      };
+      });
     },
 
     renderCall(args, theme) {

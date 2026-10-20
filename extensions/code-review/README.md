@@ -23,6 +23,10 @@ The reviewer can inspect files and run read-only commands such as `git diff`,
   - Major, should fix
   - Minor, nice to have
   - Summary
+- Reports the reviewer's token usage and cost as the tool result's `usage`, so
+  pi's footer and `/session` totals include it. Each review counts once, on the
+  first result that delivers its outcome (`code_review`, `code_review_await`,
+  `code_review_status`, or `code_review_cancel`).
 - Tracks model, token usage, cost, and exit status in the tool details.
 
 ## Installation

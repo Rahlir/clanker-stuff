@@ -1,6 +1,7 @@
 /**
- * Unit tests for the code-review pure state core: the JSON-event reducer, stderr
- * capping, final-output extraction, and the raceAbort control-flow helper.
+ * Unit tests for the code-review pure state core: the JSON-event reducer, usage
+ * accounting and delivery, stderr capping, final-output extraction, and the
+ * raceAbort control-flow helper.
  */
 
 import assert from "node:assert/strict";
@@ -13,12 +14,14 @@ import {
   applyEvent,
   applyEventLine,
   appendStderr,
+  claimUsage,
   createReviewState,
   getFinalOutput,
   MAX_ACTIVITY_ITEMS,
   MAX_STDERR_LENGTH,
   parseFailureSummary,
   raceAbort,
+  reviewUsage,
 } from "./review-state.ts";
 
 function assistantEnd(text: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
@@ -34,7 +37,15 @@ test("createReviewState seeds the requested model and empty accumulators", () =>
   assert.deepEqual(state.messages, []);
   assert.deepEqual(state.activity, []);
   assert.equal(state.streamingText, "");
-  assert.equal(state.usage.turns, 0);
+  assert.equal(state.turns, 0);
+  assert.deepEqual(state.usage, {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  });
   assert.equal(state.parseFailures, 0);
   assert.equal(state.lastParseError, null);
 });
@@ -116,17 +127,27 @@ test("assistant message_end records message, usage, model, and flushes streaming
     state,
     assistantEnd("Final review", {
       model: "actual/model",
-      usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 2, cost: { total: 0.0123 } },
+      usage: {
+        input: 100,
+        output: 20,
+        cacheRead: 5,
+        cacheWrite: 2,
+        totalTokens: 127,
+        cost: { input: 0.01, output: 0.002, cacheRead: 0.0001, cacheWrite: 0.0002, total: 0.0123 },
+      },
     }),
   );
 
   assert.equal(state.messages.length, 1);
-  assert.equal(state.usage.turns, 1);
-  assert.equal(state.usage.input, 100);
-  assert.equal(state.usage.output, 20);
-  assert.equal(state.usage.cacheRead, 5);
-  assert.equal(state.usage.cacheWrite, 2);
-  assert.equal(state.usage.cost, 0.0123);
+  assert.equal(state.turns, 1);
+  assert.deepEqual(state.usage, {
+    input: 100,
+    output: 20,
+    cacheRead: 5,
+    cacheWrite: 2,
+    totalTokens: 127,
+    cost: { input: 0.01, output: 0.002, cacheRead: 0.0001, cacheWrite: 0.0002, total: 0.0123 },
+  });
   assert.equal(state.resolvedModel, "actual/model");
   // Streamed text is finalized as an activity item and cleared.
   assert.equal(state.streamingText, "");
@@ -137,10 +158,69 @@ test("usage accumulates across multiple assistant turns", () => {
   const state = createReviewState("m");
   applyEvent(state, assistantEnd("a", { usage: { input: 10, output: 1, cost: { total: 0.001 } } }));
   applyEvent(state, assistantEnd("b", { usage: { input: 5, output: 2, cost: { total: 0.002 } } }));
-  assert.equal(state.usage.turns, 2);
+  assert.equal(state.turns, 2);
   assert.equal(state.usage.input, 15);
   assert.equal(state.usage.output, 3);
-  assert.ok(Math.abs(state.usage.cost - 0.003) < 1e-9);
+  assert.ok(Math.abs(state.usage.cost.total - 0.003) < 1e-9);
+  // Fields the provider left out stay zero rather than turning into NaN.
+  assert.equal(state.usage.totalTokens, 0);
+  assert.equal(state.usage.cost.input, 0);
+});
+
+test("optional token splits appear once any turn reports them, like pi's combineUsage", () => {
+  const state = createReviewState("m");
+  applyEvent(state, assistantEnd("a", { usage: { input: 1, output: 1 } }));
+  assert.equal("cacheWrite1h" in state.usage, false);
+  assert.equal("reasoning" in state.usage, false);
+
+  applyEvent(state, assistantEnd("b", { usage: { input: 1, output: 4, cacheWrite1h: 7, reasoning: 3 } }));
+  applyEvent(state, assistantEnd("c", { usage: { input: 1, output: 2, reasoning: 2 } }));
+  assert.equal(state.usage.cacheWrite1h, 7);
+  assert.equal(state.usage.reasoning, 5);
+});
+
+test("assistant turns without usage still count as turns", () => {
+  const state = createReviewState("m");
+  applyEvent(state, assistantEnd("no usage"));
+  assert.equal(state.turns, 1);
+  assert.equal(state.usage.cost.total, 0);
+});
+
+test("reviewUsage keeps the persisted details shape: flat cost total plus turns", () => {
+  const state = createReviewState("m");
+  applyEvent(
+    state,
+    assistantEnd("a", {
+      usage: {
+        input: 10,
+        output: 2,
+        cacheRead: 3,
+        cacheWrite: 4,
+        totalTokens: 19,
+        cost: { input: 0.1, output: 0.2, cacheRead: 0.3, cacheWrite: 0.4, total: 1 },
+      },
+    }),
+  );
+  assert.deepEqual(reviewUsage(state), { input: 10, output: 2, cacheRead: 3, cacheWrite: 4, cost: 1, turns: 1 });
+});
+
+test("claimUsage hands out usage on the first delivery only", () => {
+  const state = createReviewState("m");
+  applyEvent(state, assistantEnd("a", { usage: { input: 10, output: 2, cost: { total: 0.5 } } }));
+  const job: { delivered?: boolean; state: typeof state } = { state };
+
+  assert.deepEqual(claimUsage(job), state.usage);
+  assert.equal(job.delivered, true);
+  assert.equal(claimUsage(job), undefined);
+});
+
+test("claimUsage snapshots usage instead of sharing the live accumulator", () => {
+  const state = createReviewState("m");
+  applyEvent(state, assistantEnd("a", { usage: { input: 1, cost: { total: 0.1 } } }));
+  const claimed = claimUsage({ state });
+  applyEvent(state, assistantEnd("b", { usage: { input: 1, cost: { total: 0.1 } } }));
+  assert.equal(claimed?.input, 1);
+  assert.equal(claimed?.cost.total, 0.1);
 });
 
 test("getFinalOutput returns the last assistant text, skipping tool results", () => {
