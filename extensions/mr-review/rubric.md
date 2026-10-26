@@ -28,3 +28,6 @@ Read the relevant changes in full. The user is not the author of the MR, so
 explain each issue well enough that they can give personalized, informed
 feedback to the author rather than parroting points they don't understand.
 Include concrete code references where they help.
+
+Check the MR CI/CD pipelines as well. If static checks and tests have already
+run in the CI/CD pipelines, don't re-run these checks locally.
