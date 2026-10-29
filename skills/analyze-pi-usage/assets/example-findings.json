@@ -1,0 +1,70 @@
+{
+  "verdict": "You decide, the agent drafts, and a panel of reviewers argues before anything merges.",
+  "recommendations": [
+    {
+      "id": "quick-session-per-ticket",
+      "kind": "quick",
+      "title": "Start a new session per ticket",
+      "summary": "Resume a session only to finish its own task; hand off with /handoff instead of reopening it for the next ticket.",
+      "refs": ["S260915-1710"],
+      "status": "new",
+      "previous": null
+    },
+    {
+      "id": "quick-cd-rule",
+      "kind": "quick",
+      "title": "Teach the cd rule in the system prompt once",
+      "summary": "One AGENTS.md line about commands already running in the working directory prevents most cd guard blocks.",
+      "refs": ["S260925-1922"],
+      "status": "new",
+      "previous": null
+    },
+    {
+      "id": "big-review-panel-ci",
+      "kind": "big",
+      "title": "A standing review panel for every MR you open",
+      "summary": "Run the review swarm in a GitLab job and post findings as a draft note to approve with /mr-review.",
+      "refs": ["S261014-2102", "S261014-1601"],
+      "status": "new",
+      "previous": null
+    },
+    {
+      "id": "big-design-memory",
+      "kind": "big",
+      "title": "A design memory across sessions",
+      "summary": "An extension that injects the ADRs relevant to the files being edited, so designs and code stay aligned.",
+      "refs": ["S260923-1531"],
+      "status": "follow-up",
+      "previous": "2026-10-13#decisions-captured-as-you-make-them"
+    }
+  ],
+  "carried": [
+    {
+      "ref": "2026-10-13#quick-short-squash",
+      "outcome": "adopted",
+      "evidence": "The squash prompt has capped the body at 6 lines since clanker-stuff commit 0a8e7b5 on 13 Oct; before it, seven runs ended with a request for a shorter message.",
+      "effect": "No requests for a shorter message in the three runs since.",
+      "refs": ["S261020-1930"]
+    },
+    {
+      "ref": "2026-10-13#give-investigations-an-exit",
+      "outcome": "not-adopted",
+      "evidence": "voucherpro-debug still ends without a follow-ups list, and the memory-leak fix found in session [[S261008-2331]] reached neither a ticket nor a commit.",
+      "effect": null,
+      "refs": []
+    },
+    {
+      "ref": "2026-10-13#decisions-captured-as-you-make-them",
+      "outcome": "not-adopted",
+      "evidence": "No session since 13 Oct built the intent check; design rulings still live only in chat. Go big picks the idea up again with a smaller first step.",
+      "effect": null,
+      "refs": []
+    }
+  ],
+  "community": [
+    { "name": "@dietrichgebert/ponytail", "url": "https://pi.dev/packages/@dietrichgebert/ponytail", "ring": "try" },
+    { "name": "pi-subagents", "url": "https://pi.dev/packages/pi-subagents", "ring": "look" },
+    { "name": "shaftoe/pi-coding-agent-action", "url": "https://github.com/shaftoe/pi-coding-agent-action", "ring": "watch" },
+    { "name": "@plannotator/pi-extension", "url": "https://pi.dev/packages/@plannotator/pi-extension", "ring": "pass" }
+  ]
+}

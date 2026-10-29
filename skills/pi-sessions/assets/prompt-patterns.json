@@ -1,0 +1,10 @@
+{
+  "patterns": [
+    {
+      "name": "mr-review",
+      "source": "clanker-stuff extensions/mr-review/index.ts buildKickoff(): the rubric, fixed instructions naming the MR, and optional reviewer context",
+      "contains": "Review GitLab merge request #",
+      "regex": "^(?:[\\s\\S]*?\\n---\\n\\n)?Review GitLab merge request #([^\\s.]+)\\.\\n[\\s\\S]*?(?:\\n---\\n\\nAdditional focus / context from the reviewer for this MR:\\n([\\s\\S]+))?$"
+    }
+  ]
+}

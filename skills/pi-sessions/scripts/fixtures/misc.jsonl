@@ -1,0 +1,12 @@
+{"type":"session","version":3,"id":"0199aaaa-0000-7000-8000-000000000003","timestamp":"2026-10-04T09:00:00.000Z","cwd":"/work/misc"}
+{"type":"message","id":"m01","parentId":null,"timestamp":"2026-10-04T09:00:05.000Z","message":{"role":"user","content":"hello"}}
+{"type":"message","id":"m02","parentId":"m01","timestamp":"2026-10-04T09:00:15.000Z","message":{"role":"assistant","content":[{"type":"text","text":"hi"}],"provider":"openai-codex","model":"gpt-6-astra","usage":{"input":100,"output":10,"cacheRead":0,"cacheWrite":0,"totalTokens":110,"cost":{"input":0.009,"output":0.001,"cacheRead":0,"cacheWrite":0,"total":0.01}},"stopReason":"stop"}}
+this line is not JSON
+{"type":"compaction","id":"m03","parentId":"m02","timestamp":"2026-10-04T09:01:00.000Z","summary":"Said hello.","firstKeptEntryId":"m02","tokensBefore":1000,"usage":{"input":1000,"output":100,"cacheRead":0,"cacheWrite":0,"totalTokens":1100,"cost":{"input":0.015,"output":0.005,"cacheRead":0,"cacheWrite":0,"total":0.02}}}
+{"type":"context_edit","id":"m04","parentId":"m03","timestamp":"2026-10-04T09:01:05.000Z","targetId":"m01","replacement":null}
+{"type":"usage","id":"m05","parentId":"m04","timestamp":"2026-10-04T09:01:10.000Z","kind":"cache_warm","provider":"anthropic","model":"claude-sonnet-5","usage":{"input":0,"output":0,"cacheRead":10000,"cacheWrite":0,"totalTokens":10000,"cost":{"input":0,"output":0,"cacheRead":0.003,"cacheWrite":0,"total":0.003}}}
+{"type":"custom","id":"m06","parentId":"m05","timestamp":"2026-10-04T09:01:15.000Z","customType":"mr-review","data":{"state":"commented"}}
+{"type":"custom_message","id":"m07","parentId":"m06","timestamp":"2026-10-04T09:01:20.000Z","customType":"memory","content":"remembered things","display":true}
+{"type":"future_thing","id":"m08","parentId":"m07","timestamp":"2026-10-04T09:01:25.000Z","value":42}
+{"type":"label","id":"m09","parentId":"m08","timestamp":"2026-10-04T09:01:30.000Z","targetId":"m02","label":"checkpoint"}
+{"type":"message","id":"m10","parentId":"m09","timestamp":"2026-10-04T09:01:35.000Z","message":{"role":"system","content":"","sections":{"preamble":"You are pi."}}}

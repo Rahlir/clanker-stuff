@@ -86,13 +86,7 @@ pi loads TypeScript extensions directly; there is no compile step. After editing
 
 Before designing anything, read recent session logs to see how the workflow plays out in practice: tool choices, phrasing patterns, points of friction.
 
-**Session logs** for the current working directory:
-
-```bash
-~/.pi/agent/sessions/-$(echo "$(pwd)/" | tr '/' '-')-/
-```
-
-Each session is a `.jsonl` file. Lines with `"type": "message"` hold the conversation; `role` is `user`, `assistant`, or `toolResult`; text lives in `content[].text` blocks. The same formula works for any directory, which is useful when a skill targets a workflow in a different repo.
+**Session logs:** use the `pi-sessions` skill (`skills/pi-sessions/scripts/piss.mjs`). `piss find <words>` locates sessions by what was said, `piss prompts --repo <dir>` shows what was asked in a repo, `piss show <ref>` reads a transcript, and `piss sql` answers tool-call questions (which commands fail, how often a tool is used). The raw `.jsonl` logs live under `~/.pi/agent/sessions/--<cwd with / as ->--/` for anything piss does not expose.
 
 **pi SDK and docs** for extension authoring (`docs/`, `examples/extensions/`):
 
@@ -117,7 +111,9 @@ gitignored under `lib/`/`extensions/` as a safety net, but avoid creating them.)
 `npm test` runs the unit/integration suite via Node's built-in runner (`node
 --test`, no framework or transpiler: Node runs the `.test.ts` files and their
 `.ts`-extension imports natively). Test files are colocated as `*.test.ts` next
-to their sources, so `tsconfig` already type-checks them. There is still no lint.
+to their sources, so `tsconfig` already type-checks them. Skill scripts are
+plain `.mjs` with colocated `*.test.mjs` suites: `npm test` runs them too, but
+`type-check` does not cover them. There is still no lint.
 
 What is tested, and what is not: unit and integration tests target the
 dependency-free "pure core" only, i.e. modules that import at most `import type`

@@ -1,0 +1,222 @@
+<header class="hero">
+  <h1>You run two products as their <em>architect</em>, and pi does most of the typing.</h1>
+  <p class="lede">
+    A month of NBA 2 and VoucherPRO: you design, review and decide, the agent drafts and implements, and
+    reviewers argue before anything merges. Thirteen merge requests landed. The friction is in the handoffs
+    between those roles, not in the work itself.
+  </p>
+  <!--chart:kpis-->
+</header>
+
+<section id="overview" data-label="Overview">
+  <h2>Two products took four fifths of your time</h2>
+  <p class="dek">
+    NBA 2 is where you set the architecture and review your team; VoucherPRO is where you build. The
+    rhythm is steady on weekdays and quiet at weekends, with two long evenings around the reward voucher rework.
+  </p>
+  <!--chart:daily-->
+  <div class="grid-2">
+    <!--chart:repos-->
+    <!--chart:models-->
+  </div>
+  <!--chart:heatmap-->
+
+  <h3>What the work was</h3>
+  <p>Sessions labeled by kind of work after reading them. Time and spend are in-window totals.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Kind of work</th><th class="num">Sessions</th><th class="num">Your time</th><th class="num">Spend</th><th>Typical session</th></tr></thead>
+      <tbody>
+        <tr><td>Hands-on build</td><td class="num">24</td><td class="num">21.4 h</td><td class="num">$512</td><td>Reward voucher rework, step by step [[S260922-1755]]</td></tr>
+        <tr><td>Team MR review</td><td class="num">31</td><td class="num">14.9 h</td><td class="num">$298</td><td><code>/mr-review</code> with issues drafted one by one [[S261009-1511]]</td></tr>
+        <tr><td>Design and ADRs</td><td class="num">17</td><td class="num">12.2 h</td><td class="num">$241</td><td>ADR-0015 for the administration forms [[S260923-1531]]</td></tr>
+        <tr><td>Agent tooling</td><td class="num">11</td><td class="num">4.8 h</td><td class="num">$132</td><td>The SonarQube skill, from suggestion to release [[S260909-1140]]</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="verdict" data-label="Verdict">
+  <h2>The reviewing architect</h2>
+  <div class="verdict">
+    <p class="persona">What kind of pi user you are</p>
+    <p class="line">You decide, the agent drafts, and a panel of reviewers argues before anything merges.</p>
+    <ul class="traits">
+      <li>design before code</li>
+      <li>review swarms on your own work</li>
+      <li>pair implementation</li>
+      <li>plain-prose notes</li>
+    </ul>
+    <p>
+      You rarely ask pi to just write something. Sessions open with a design question or a review, move
+      to a plan you approve step by step, and end with reviewers from two vendors checking the result.
+      That costs more turns than delegating, and it is why so little of what merges comes back.
+    </p>
+  </div>
+</section>
+
+<section id="works" data-label="What works">
+  <h2>Reviews before merge catch what you would have missed</h2>
+  <p class="dek">Three habits carry most of the outcomes this month.</p>
+  <div class="findings">
+    <article class="finding">
+      <p class="kind">works</p>
+      <h3>The reward voucher rework landed in five days</h3>
+      <p class="metric">5 MRs <small>management, GUI and orchestrator</small></p>
+      <p>A plan approved step by step, implemented across three services, with every step reviewed before the next one started.</p>
+      <p class="evidence">[[S260922-1755]] [[S260925-1922]]</p>
+    </article>
+    <article class="finding">
+      <p class="kind">works</p>
+      <h3>Team reviews read like you wrote them</h3>
+      <p class="metric">106 notes <small>posted on 17 MRs</small></p>
+      <p>Issues registered first, drafted one at a time in plain prose, and annotated until they say what you mean.</p>
+      <p class="evidence">[[S261009-1511]] [[S261014-2102]] [[S261014-1601]]</p>
+    </article>
+    <article class="finding note wide">
+      <p class="kind">note</p>
+      <h3>Contracts first, then code</h3>
+      <p>The NBA 2 public API redesign started as a contracts discussion and merged as one MR the same day the code was written. Deciding the shape first made the implementation short.</p>
+      <p class="evidence">[[S261012-1215]]</p>
+    </article>
+  </div>
+  <blockquote class="voice">
+    <p>Hmm, okay, I think your recommendation is on balance the better option, let's loosen the ADR then</p>
+    <cite>[[S261012-1215]]</cite>
+  </blockquote>
+  <h3>How the month went</h3>
+  <ol class="timeline">
+    <li><time>Sep 22</time><p>Reward voucher rework starts in VoucherPRO management [[S260922-1755]].</p></li>
+    <li><time>Sep 23</time><p>ADR-0015 drafted for the administration form architecture [[S260923-1531]].</p></li>
+    <li><time>Oct 12</time><p>Contracts refactor merged as NBA 2 !48 [[S261012-1215]].</p></li>
+    <li><time>Oct 14</time><p>Development timeline page built for the NBA 2 docs [[S261014-1859]].</p></li>
+  </ol>
+</section>
+
+<section id="friction" data-label="What does not">
+  <h2>Long sessions carry context they no longer need</h2>
+  <p class="dek">Most friction comes from sessions that outlive their task.</p>
+  <div class="findings">
+    <article class="finding friction">
+      <p class="kind">friction</p>
+      <h3>Weeks-long sessions get resumed for new work</h3>
+      <p class="metric">46 sessions <small>spanning more than a week</small></p>
+      <p>A session started for one ticket gets reopened for the next. The agent carries the old context, and summaries pile up.</p>
+      <p class="evidence">[[S260915-1710]] [[S260925-1646]]</p>
+    </article>
+    <article class="finding risk">
+      <p class="kind">risk</p>
+      <h3>Guard blocks repeat on the same commands</h3>
+      <p class="metric">278 blocks <small>cd into the working directory</small></p>
+      <p>The cd guard fires on the same pattern every week; each block costs a turn and a retry.</p>
+      <p class="evidence">[[S260925-1922]]</p>
+    </article>
+  </div>
+  <blockquote class="voice">
+    <p>Yeah, accessibility really doesn't matter, we know our user base and none of them use screenreaders. So I prefer (2) option here.</p>
+    <cite>[[S261009-1511]]</cite>
+  </blockquote>
+</section>
+
+<section id="since-last" data-label="Since the last report">
+  <h2>One of the 13 Oct suggestions stuck, two did not</h2>
+  <p class="dek">
+    What became of the earlier recommendations this report builds on. Each card quotes the earlier report,
+    then says what changed and how we know.
+  </p>
+  <!--chart:carried-->
+</section>
+
+<section id="quick-wins" data-label="Quick wins">
+  <h2>Four small changes with measurable payoff</h2>
+  <div class="recs">
+    <article class="rec">
+      <h3>Start a new session per ticket</h3>
+      <p>Resume only to finish the same task; hand off with <code>/handoff</code> instead of reopening.</p>
+      <p class="change">handoff.md: suggest /new when the next task differs</p>
+      <p class="evidence">[[S260915-1710]]</p>
+      <p class="meters"><span data-level="1">effort</span><span data-level="3">payoff</span></p>
+    </article>
+    <article class="rec">
+      <h3>Teach the cd rule in the system prompt once</h3>
+      <p>The guard reason is clear, but it arrives after the mistake. One line in AGENTS.md prevents most of the 278 blocks.</p>
+      <p class="change">AGENTS.md: "commands already run in the working directory"</p>
+      <p class="evidence">[[S260925-1922]]</p>
+      <p class="meters"><span data-level="1">effort</span><span data-level="2">payoff</span></p>
+    </article>
+  </div>
+</section>
+
+<section id="go-big" data-label="Go big">
+  <h2>Where the workflow could go next</h2>
+  <p class="dek">Two bets that grow out of how you already work.</p>
+  <div class="bets">
+    <article class="bet">
+      <h3>A standing review panel for every MR you open</h3>
+      <p>Your swarm reviews already catch issues before merge. Running them in CI on every MR would make that the default rather than a step you remember.</p>
+      <ul class="how">
+        <li>Run <code>pi -p</code> with the review-swarm prompt in a GitLab job.</li>
+        <li>Post findings as a draft note you approve with <code>/mr-review</code>.</li>
+      </ul>
+      <p><strong>Success measure:</strong> fewer review rounds per MR before merge.</p>
+      <p class="evidence">[[S261014-2102]] [[S261014-1601]]</p>
+    </article>
+    <article class="bet">
+      <h3>A design memory across sessions</h3>
+      <p>
+        ADR decisions are rediscovered in each session, as in the ADR-0015 work [[S260923-1531]]. This picks up an
+        earlier big idea, capturing decisions as you make them [[R:2026-10-13#decisions-captured-as-you-make-them]],
+        which was never built, with a smaller first step: an extension that injects the ADRs relevant to the files
+        being edited.
+      </p>
+    </article>
+  </div>
+</section>
+
+<section id="community" data-label="From the community">
+  <h2>Others already built half of what you hand-run</h2>
+  <p class="dek">
+    Popular pi packages this month, read against how you work. Popularity is monthly downloads on
+    pi.dev; the fit is judged from your sessions, not from the package's own pitch.
+  </p>
+  <div class="radar">
+    <article class="find" data-ring="try">
+      <h3><a href="https://pi.dev/packages/@dietrichgebert/ponytail">@dietrichgebert/ponytail</a><span class="pop">50.8K/mo</span></h3>
+      <p>A "lazy senior dev" skill: stop at the first rung that holds, from "is it needed" to "is it one line".</p>
+      <p class="fit">Your most frequent review catch is over-building; this makes the check a standing instruction [[S261014-2102]].</p>
+      <p class="nofit">Blunt; it may fight the thoroughness your review rubric asks for.</p>
+    </article>
+    <article class="find">
+      <h3><a href="https://pi.dev/packages/pi-subagents">pi-subagents</a><span class="pop">459.5K/mo</span></h3>
+      <p>Delegation with <code>/council</code>, <code>/parallel-review</code> and <code>/review-loop</code>, each in its own worktree.</p>
+      <p class="fit">Replaces the review swarms you run by hand on your own branches [[S261014-1601]].</p>
+      <p class="nofit">Overlaps the job runner in your code-review extension, which you like owning.</p>
+    </article>
+    <article class="find" data-ring="watch">
+      <h3><a href="https://github.com/shaftoe/pi-coding-agent-action">shaftoe/pi-coding-agent-action</a><span class="pop">GitHub</span></h3>
+      <p>pi in CI: reviews every pull request with comments anchored to diff lines.</p>
+      <p class="fit">The reference design for a GitLab job running your MR review rubric.</p>
+      <p class="nofit">GitHub APIs only; a GitLab port means swapping in glab.</p>
+    </article>
+    <article class="find" data-ring="pass">
+      <h3><a href="https://pi.dev/packages/@plannotator/pi-extension">@plannotator/pi-extension</a><span class="pop">79.6K/mo</span></h3>
+      <p>Plan and code review with annotations in a browser UI.</p>
+      <p class="fit">Proof that line annotations on agent drafts work.</p>
+      <p class="nofit">Your own annotator already does this inside the terminal.</p>
+    </article>
+  </div>
+</section>
+
+<section id="method" data-label="Method">
+  <h2>How this report was made</h2>
+  <details class="method" open>
+    <summary>Sources, definitions and limits</summary>
+    <div>
+      <dl>
+        <dt>Numbers</dt><dd>From <code>piss facts</code> and <code>piss outcomes</code>; definitions in pi-sessions <code>references/metrics.md</code>.</dd>
+        <dt>Reading</dt><dd>Every prompt in the window, and every session cited here opened with <code>piss show</code>.</dd>
+        <dt>Not covered</dt><dd>Reviewer transcripts (they run without a session) and work outside pi.</dd>
+      </dl>
+    </div>
+  </details>
+</section>

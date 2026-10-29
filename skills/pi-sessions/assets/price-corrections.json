@@ -1,0 +1,21 @@
+{
+  "unit": "USD per million tokens",
+  "corrections": [
+    {
+      "id": "keystone-opus-5-2026-09-24",
+      "provider": "keystone",
+      "model": "claude-opus-5",
+      "wrong": { "input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75 },
+      "right": { "input": 5, "output": 25, "cacheRead": 0.5, "cacheWrite": 6.25 },
+      "source": "tmobile-clanker-stuff a1c8285 (2026-09-24): keystone-gateway listed three times the real Opus 5 rate"
+    },
+    {
+      "id": "keystone-opus-5-5-2026-09-30",
+      "provider": "keystone",
+      "model": "claude-opus-5-5",
+      "wrong": { "input": 4, "output": 20, "cacheRead": 0.2, "cacheWrite": 5 },
+      "right": { "input": 4.4, "output": 22, "cacheRead": 0.2, "cacheWrite": 5.5 },
+      "source": "tmobile-clanker-stuff d23189e (2026-09-30): the gateway bills list price plus a 10% surcharge"
+    }
+  ]
+}

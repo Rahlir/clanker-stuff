@@ -1,0 +1,8 @@
+{
+  "tools": [
+    { "name": "questionnaire", "source": "clanker-stuff extensions/questionnaire: waits for the user's answers" },
+    { "name": "annotate_text", "source": "clanker-stuff extensions/annotate: the user reviews, annotates or edits a draft" },
+    { "name": "draft_mr_note", "source": "clanker-stuff extensions/mr-review: the user approves, annotates, edits or rejects each note" },
+    { "name": "post_mr_review", "source": "clanker-stuff extensions/mr-review: the user confirms the preview before notes are posted" }
+  ]
+}
