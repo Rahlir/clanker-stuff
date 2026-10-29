@@ -38,6 +38,8 @@ State persists across restarts; re-running `/mr-review` on the same MR resumes.
   the kickoff for a fresh review, or sent as a steering message when resuming.
   Use `/mr-review <MR> --context` to compose longer/multi-line context in an
   editor (seeded with any text after the flag).
+  The command also names the session `mr-<MR>-review`. See
+  [Session naming](#session-naming).
 - `/mr-issues`: browse the full issue list in a scrollable view
 - `/mr-post`: preview and post approved notes
 - `/mr-reset`: clear the current review
@@ -70,6 +72,19 @@ at once; the last one steals focus and the earlier calls hang forever. The issue
 list and post-preview screens additionally take the shared lock in
 `lib/ui-lock.ts`, which covers the case `executionMode` cannot: `/mr-issues` or
 `/mr-post` fired while a note TUI is already open.
+
+## Session naming
+
+`/mr-review <MR>` names the session `mr-<MR>-review` (e.g. `mr-123-review`), on a
+fresh start and when resuming the same MR, so a session that predates this
+behavior is renamed the next time you run the command.
+
+- A name you chose (`/name`, session picker) is never overwritten. Only an unset
+  name or an earlier `mr-<n>-review` is replaced, so switching MRs renames the
+  session.
+- Only a plain number (`123`, `!123`, `#123`) yields a name. A URL or branch
+  leaves the session unnamed.
+- `/mr-reset` keeps the name. Nothing renames on reload, resume, or fork.
 
 ## Rubric override
 

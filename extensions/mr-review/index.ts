@@ -6,7 +6,7 @@
  * the analysis and fetches the diff via the glab skill.
  *
  * Flow:
- *   /mr-review <MR>  -> records MR context, kicks off the agent with the rubric
+ *   /mr-review <MR>  -> records MR context, names the session, kicks off the agent with the rubric
  *   register_mr_issue -> builds the tracked list (silent)
  *   draft_mr_note     -> per-issue annotation TUI (approve/annotate/edit/reject/skip)
  *   update_mr_issue   -> reject / reopen / edit an issue via conversation
@@ -28,6 +28,7 @@ import { locationLabel, severityColor } from "./format.ts";
 import { type AnchorErrorKind, isAnchorFailure, postNote } from "./glab.ts";
 import { openIssueList } from "./issues-tui.ts";
 import { type PreviewItem, openPostConfirm } from "./post-tui.ts";
+import { nextSessionName } from "./session-name.ts";
 import { ReviewStore, type ReviewData, type Severity, validateAnchor } from "./state.ts";
 import { issueWidgetFactory } from "./widget.ts";
 
@@ -198,6 +199,13 @@ export default function mrReview(pi: ExtensionAPI): void {
 		if (changed) pi.setActiveTools([...active]);
 	}
 
+	// Called only from /mr-review (not session_start): the name changes in response
+	// to an explicit command, never silently on reload, resume, or fork.
+	function syncSessionName(mr: string): void {
+		const next = nextSessionName(pi.getSessionName(), mr);
+		if (next) pi.setSessionName(next);
+	}
+
 	function okResult(text: string, details?: Record<string, unknown>) {
 		return { content: [{ type: "text" as const, text }], details: details ?? {} };
 	}
@@ -324,6 +332,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 			if (store.hasReview() && store.activeMr === mr) {
 				refreshWidget(ctx);
 				setToolsActive(true);
+				syncSessionName(mr);
 				if (extraContext) {
 					const steer = `Additional focus / context for the ongoing review of MR #${mr}:\n\n${extraContext}`;
 					if (ctx.isIdle()) pi.sendUserMessage(steer);
@@ -345,6 +354,7 @@ export default function mrReview(pi: ExtensionAPI): void {
 
 			store.start(mr);
 			setToolsActive(true);
+			syncSessionName(mr);
 			persist();
 			refreshWidget(ctx);
 			pi.sendUserMessage(buildKickoff(mr, extraContext));
