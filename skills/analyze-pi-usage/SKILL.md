@@ -65,6 +65,11 @@ historical context in your report is allowed, but restating a previous
 recommendation needs a good reason: mark it as a repeat or a follow-up and say
 why it still matters._
 
+Treat the fact that I have not picked up the earlier suggestions as a signal: it
+might mean that I didn't consider the suggestions worth taking or I might have
+thought the friction they solve is not a real friction. Or I simply might have
+been busy with other work.
+
 ## Workflow
 
 Read [../pi-sessions/SKILL.md](../pi-sessions/SKILL.md) first. Keep working
