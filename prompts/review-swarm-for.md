@@ -1,5 +1,6 @@
 ---
 description: Run a review swarm on a design, implementation, or change
+argument-hint: "<what to review>"
 ---
 Your task is to manage a review swarm for:
 
@@ -19,7 +20,7 @@ The four reviewer models you should launch and their focus are:
    the code handles edge cases, checking for dead code, reviewing quality of
    code and quality of comments and docstrings. 
 2. `openai-codex/gpt-6.1-sol` with `high` thinking. Same focus as #1
-3. `anthropic-vertex/claude-fable-5-1` with `medium` thinking. This is the
+3. `anthropic-vertex/claude-fable-5-2` with `medium` thinking. This is the
    "architect reviewer". It should focus on big picture things: reviewing
    structure of the code, identifying over-engineered and unnecessarily complex
    code, evaluating the maintainability and extensibility of the code, checking

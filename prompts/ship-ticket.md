@@ -22,7 +22,7 @@ Ground rules:
 - Verify per AGENTS.md (pyright, ruff, type-check, tests). If the local
   test harness is unavailable, say so once and rely on CI instead of
   fighting the environment.
-- When done, run `code_review` with model `keystone/claude-sonnet-5` and
+- When done, run `code_review` with model `keystone/claude-sonnet-5-5` and
   high thinking. Fix critical and major issues, use your own judgment on
   minor ones, repeat until the reviewer approves and there are no more
   critical or major issues.
