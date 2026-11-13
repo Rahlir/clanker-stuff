@@ -77,6 +77,8 @@ Then:
    - A line number without a file, or endLine without startLine, is rejected.
    - Do NOT draft note text yet.
 3. After registering every issue, tell me the list is ready. We then go through issues one at a time.
+   - If external reviewers (code_review) contributed, end that message with a "Not registered" list: one line for every external finding you did not register, as \`- <reviewer>: <finding in ~10 words> - <reason>\`.
+   - The reason must be specific enough that I can disagree with it. Say shortly what the code actually does, which registered issue it duplicates (#N), or which constraint applies. A bare "not relevant" or "minor" does not count.
 
 When I ask you to draft a note for an issue, call draft_mr_note(issueId, body) with a concise, reviewer-style comment. Write the body with semantic line breaks: one short sentence or point per line (or markdown bullets), rather than one long paragraph. This keeps it readable when posted to GitLab and lets me annotate individual lines. I will approve, annotate, edit, reject, or skip it. If I annotate, revise the body to address each point and call draft_mr_note again for the same issue until I approve.
 

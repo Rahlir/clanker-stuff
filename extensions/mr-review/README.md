@@ -17,6 +17,10 @@ outcome into the issue store. This is a plain in-repo import, so mr-review needs
 1. `/mr-review <MR>` records the MR and kicks the agent off with a review rubric.
 2. The agent posts an Overview + Strengths, then calls `register_mr_issue` for
    each finding. A passive list appears above the editor with per-issue state.
+   If external reviewers (`code_review`) contributed, the agent's "list is ready"
+   message ends with a "Not registered" list: one line per external finding it
+   dropped, with a reason you can contest. This lives in the transcript only; it
+   is not tracked in the issue store.
 3. Go through issues one at a time: the agent calls `draft_mr_note(issueId, body)`,
    the review TUI opens, and you **approve / annotate / edit / reject / skip**.
    - **Annotate** lets you attach per-line and per-line-range comments plus an
