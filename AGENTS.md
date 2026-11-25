@@ -43,6 +43,12 @@ the rest of the session. Any tool that opens UI must declare
 at a time) and should run the UI inside `withUiLock` from `lib/ui-lock.ts`, which
 turns a leftover concurrent open into a clear error instead of a silent hang.
 
+Such a tool also declares `exposure: "model-only"`, so codemode scripts cannot
+call it: a call from a script returns the user's response to the script only,
+never to the transcript. When adding one, also list it in
+`skills/pi-sessions/assets/interactive-tools.json` so its wait counts as the
+user's time.
+
 ## Interactive UI: fit the viewport
 
 A component must bound its own height in both TUI modes, for different reasons.

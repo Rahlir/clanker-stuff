@@ -125,9 +125,12 @@ test("coverage warns about spend it keeps but cannot fully read, and about templ
       usage_without_cost: 2,
       entries_without_time: 3,
       late_review_receipts: 0,
+      nested_calls_incomplete: 4,
       templates: { skipped: ["npm:@x/prompts"] },
     }),
     [
+      "4 tool results with an incomplete record of the calls they made " +
+        "(calls past 256 dropped, large arguments omitted, or calls still running when the tool ended)",
       "1 usage rows with neither provider nor model",
       "2 usage rows with no recorded cost (counted as $0)",
       "3 entries without a readable timestamp (outside every window)",

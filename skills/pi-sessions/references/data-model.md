@@ -42,7 +42,8 @@ One row per thing that cost money; sum `cost_corrected`.
 
 One row per assistant message: `provider`, `model`, `thinking_level`,
 `stop_reason` (`stop`, `toolUse`, `error`, `aborted`, ...), `error`,
-`duration_ms`, `text_chars`, `tool_calls` (count). Cost is in `usage_events`
+`duration_ms`, `text_chars`, `tool_calls` (count of the calls the model made,
+not those its tools made). Cost is in `usage_events`
 (`source = 'assistant'`, same `entry_id`).
 
 ## prompts
@@ -60,15 +61,19 @@ One row per user message.
 
 ## tool_calls
 
-One row per tool call, joined with its result.
+One row per tool call, joined with its result. Calls a tool made while it ran
+(a codemode script's `tools.bash()`) are rows too, nested under their caller;
+pi keeps only a summary of them, never their results. Filter on
+`parent_call_id IS NULL` for the calls the model made itself.
 
 | Column | Meaning |
 |--------|---------|
-| `call_id`, `entry_id`, `ts` | The call and the assistant message that made it |
+| `call_id`, `parent_call_id` | The call, and the call that made it; `parent_call_id` is null for calls the model made |
+| `entry_id`, `ts` | The assistant message that made the call, or for a nested call its outermost caller |
 | `name`, `key_arg` | Tool and its most telling argument (command, path, ...), 300 chars |
-| `args_json`, `args_chars` | Arguments as JSON (first 64 KB) and full length |
-| `result_entry_id`, `result_ts`, `is_error`, `duration_ms` | The result; null when none was recorded |
-| `result_text`, `result_chars` | Result text (first 4000 chars) and full length |
+| `args_json`, `args_chars` | Arguments as JSON (first 64 KB) and full length. When pi omitted a nested call's large arguments, `args_json` is null and `args_chars` is their size in bytes |
+| `result_entry_id`, `result_ts`, `is_error`, `duration_ms` | The result; null when none was recorded. Nested calls point at their outermost caller's result; `is_error` is null for one still running when that tool ended |
+| `result_text`, `result_chars` | Result text (first 4000 chars) and full length. Nested calls keep only an error's text (first 500 chars) and no length |
 
 ## events
 
@@ -93,7 +98,7 @@ issue state.
 | `tags` | The agent's labels, kept in the state dir and attached on open: `session_id` (pi's id, so a label never moves to another session), `from_entry`, `tag`, `note`, `tagged_at`, `tagged_by`. `from_entry` is null for a whole-session label, the only kind written today; it is reserved for labeling part of a session, so filter on `from_entry IS NULL` |
 | `session_tags` | Temp view: `tags` joined to `sessions`, adding `ref`. Use it to join labels to other tables |
 | `meta` | Build facts: `built_at`, `since`, `until`, `open_ended` (`1` when built up to now), `pi_version`, `timezone`, `excluded_session`, `schema_version`, ... |
-| `coverage` | Build coverage report, JSON values per metric: what was read and what was skipped or only partly understood (`late_review_receipts`, `usage_without_cost`, `usage_without_model`, `entries_without_time`); the query header turns these into WARN lines |
+| `coverage` | Build coverage report, JSON values per metric: what was read and what was skipped or only partly understood (`late_review_receipts`, `usage_without_cost`, `usage_without_model`, `entries_without_time`, `nested_calls_incomplete`); the query header turns these into WARN lines |
 
 ## Examples
 

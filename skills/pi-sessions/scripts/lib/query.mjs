@@ -68,6 +68,12 @@ export function coverageWarnings(coverage) {
   if (coverage.files_failed?.length) out.push(`${coverage.files_failed.length} session files failed to load`);
   if (coverage.dirs_unreadable?.length) out.push(`${coverage.dirs_unreadable.length} session directories could not be read`);
   if (coverage.orphan_tool_results) out.push(`${coverage.orphan_tool_results} tool results without their call (kept as events)`);
+  if (coverage.nested_calls_incomplete) {
+    out.push(
+      `${coverage.nested_calls_incomplete} tool results with an incomplete record of the calls they made ` +
+        "(calls past 256 dropped, large arguments omitted, or calls still running when the tool ended)",
+    );
+  }
   if (coverage.malformed_lines) out.push(`${coverage.malformed_lines} malformed lines skipped`);
   const unknown = Object.entries(coverage.unknown_types ?? {});
   if (unknown.length) out.push(`unknown entry types: ${unknown.map(([t, n]) => `${t} (${n})`).join(", ")}`);

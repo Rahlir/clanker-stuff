@@ -4,9 +4,32 @@ import { takeCorpusFlag } from "../config.mjs";
 import { previousWindow, resolveWindow, window } from "../query.mjs";
 import { canonicalKey, parseCsv, parseJiraCsv, rejectedJiraKeys } from "./outcomes.mjs";
 import { displayText } from "./prompts.mjs";
+import { nestedLines } from "./show.mjs";
 import { pageRows, statementProblem, uniqueNames } from "./sql.mjs";
 
 process.env.TZ = "UTC";
+
+test("show lists a script's calls, capped in the outline", () => {
+  const record = {
+    calls: [
+      { name: "bash", arguments: { command: "rg -r foo" }, status: "error", durationMs: 1, error: "blocked\nby guard" },
+      { name: "edit", argumentsBytes: 9000, status: "ok", durationMs: 1200 },
+      { name: "read", arguments: { path: "/a.ts" }, status: "unfinished" },
+    ],
+    complete: false,
+  };
+  assert.deepEqual(nestedLines(record, "full"), [
+    "    ↳ bash  rg -r foo  ✗ 0.0 s blocked by guard",
+    "    ↳ edit  (9000 bytes of arguments, not recorded)  ✓ 1.2 s",
+    "    ↳ read  /a.ts  (unfinished)",
+    "    ↳ (pi's record of these calls is incomplete)",
+  ]);
+  const many = { calls: Array.from({ length: 10 }, (_, i) => ({ name: "read", arguments: { path: `/f${i}` }, status: "ok" })), complete: true };
+  const outline = nestedLines(many, "outline");
+  assert.equal(outline.length, 9);
+  assert.equal(outline.at(-1), "    ↳ … 2 more (--level full shows all)");
+  assert.deepEqual(nestedLines(undefined, "outline"), []);
+});
 
 test("parseCsv handles quotes, escaped quotes, commas and CRLF", () => {
   assert.deepEqual(parseCsv('a,b\r\n"x, y","say ""hi"""\n\n'), [

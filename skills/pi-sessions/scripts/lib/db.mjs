@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 
 // Bump when the schema or a metric definition changes, so query commands
 // refuse a corpus whose numbers were computed differently.
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 const TABLES = {
   sessions: [
@@ -76,6 +76,7 @@ const TABLES = {
   tool_calls: [
     "ref",
     "call_id",
+    "parent_call_id",
     "entry_id",
     "ts",
     "name",
@@ -120,7 +121,7 @@ CREATE TABLE prompts (
   has_images INTEGER, gap_before_s REAL, on_active_branch INTEGER
 );
 CREATE TABLE tool_calls (
-  ref TEXT, call_id TEXT, entry_id TEXT, ts TEXT, name TEXT, key_arg TEXT, args_json TEXT, args_chars INTEGER,
+  ref TEXT, call_id TEXT, parent_call_id TEXT, entry_id TEXT, ts TEXT, name TEXT, key_arg TEXT, args_json TEXT, args_chars INTEGER,
   result_entry_id TEXT, result_ts TEXT, is_error INTEGER, result_text TEXT, result_chars INTEGER,
   duration_ms INTEGER, on_active_branch INTEGER
 );

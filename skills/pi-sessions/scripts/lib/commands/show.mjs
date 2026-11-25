@@ -17,7 +17,8 @@ path. The file is read through pi, so sessions outside the corpus work too.
 Entries are numbered #1, #2, ... in file order; output is paged.
 
   --level outline|full   outline (default): your prompts and agent text, one line
-                         per tool call. full: also tool results, thinking, and
+                         per tool call (the first 8 calls a codemode script made).
+                         full: every script call, tool results, thinking, and
                          expanded template text
   --branches active|all  abandoned branches collapsed to one line (default) or shown
   --from N               start at entry #N
@@ -29,6 +30,7 @@ Entries are numbered #1, #2, ... in file order; output is paged.
                          (compaction and context edits applied)`;
 
 const OUTLINE_TEXT_CAP = 2500;
+const OUTLINE_NESTED_CAP = 8;
 const SUMMARY_CAP = 400;
 const ENTRY_CAP = 100_000;
 
@@ -120,6 +122,7 @@ function toolLine(call, result, cost, level, maxResult) {
     status = rm.isError ? `✗${secs} ${oneLine(textOf(rm.content), 160)}` : `✓${secs}`;
   }
   const lines = [`  → ${call.name}  ${oneLine(what, 200)}  ${status}${cost ? ` · ${money(cost)}` : ""}`];
+  lines.push(...nestedLines(rm?.nestedCalls, level));
   if (level === "full" && rm) {
     const text = textOf(rm.content);
     if (text) {
@@ -128,6 +131,21 @@ function toolLine(call, result, cost, level, maxResult) {
     }
   }
   return lines.join("\n");
+}
+
+/** One line per call a tool made while it ran (codemode scripts), from pi's `nestedCalls` record. */
+export function nestedLines(record, level) {
+  const calls = Array.isArray(record?.calls) ? record.calls : [];
+  const shown = level === "full" ? calls : calls.slice(0, OUTLINE_NESTED_CAP);
+  const lines = shown.map((c) => {
+    const secs = c.durationMs != null ? ` ${(c.durationMs / 1000).toFixed(1)} s` : "";
+    const status = c.status === "error" ? `✗${secs} ${oneLine(c.error ?? "", 160)}` : c.status === "ok" ? `✓${secs}` : "(unfinished)";
+    const what = c.arguments ? (keyArg(c.arguments) ?? "") : `(${c.argumentsBytes ?? "?"} bytes of arguments, not recorded)`;
+    return `    ↳ ${c.name}  ${oneLine(what, 200)}  ${status}`;
+  });
+  if (shown.length < calls.length) lines.push(`    ↳ … ${calls.length - shown.length} more (--level full shows all)`);
+  if (record?.complete === false) lines.push("    ↳ (pi's record of these calls is incomplete)");
+  return lines;
 }
 
 function renderEntry(e, n, ctx) {

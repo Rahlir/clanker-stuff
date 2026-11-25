@@ -78,6 +78,9 @@ export default function annotate(pi: ExtensionAPI): void {
     // Serialize the whole tool batch: ctx.ui.custom has no mutual exclusion, so a
     // second concurrent component steals focus and hangs the first call forever.
     executionMode: "sequential",
+    // Not callable from codemode scripts: a script would receive the user's
+    // verdict instead of the transcript, and its wait would count as agent time.
+    exposure: "model-only",
     parameters: Type.Object({
       body: Type.String({ description: "The drafted artifact text to review" }),
       destination: StringEnum(DESTINATIONS, {
@@ -103,7 +106,9 @@ export default function annotate(pi: ExtensionAPI): void {
           "annotate_text requires a target. If this text has no durable destination, print it to the chat instead.",
         );
       }
-      const { destination } = params;
+      // pi-ai types StringEnum as a pi-schema Schema, which typebox's Static
+      // reads as unknown; pi has already validated it against DESTINATIONS.
+      const destination = params.destination as Destination;
       const where = `${destination}: ${target}`;
 
       const res = await openAnnotator(ctx, {

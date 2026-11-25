@@ -446,6 +446,9 @@ export default function mrReview(pi: ExtensionAPI): void {
 		// Serialize the whole tool batch: ctx.ui.custom has no mutual exclusion, so a
 		// second concurrent component steals focus and hangs the first call forever.
 		executionMode: "sequential",
+		// Not callable from codemode scripts: a script would receive the user's
+		// verdict instead of the transcript, and its wait would count as agent time.
+		exposure: "model-only",
 		parameters: Type.Object({
 			issueId: Type.Number({ description: "Id of the registered issue (see the issue list)" }),
 			body: Type.String({ description: "Proposed reviewer-style comment to post for this issue" }),
@@ -559,8 +562,10 @@ export default function mrReview(pi: ExtensionAPI): void {
 		label: "Post MR Review",
 		description:
 			"Part of the /mr-review workflow. Open the confirm + preview screen for the approved (queued) notes and post them to the MR via glab. Call when the issues have been addressed.",
-		// Same reason as draft_mr_note: two TUIs open at once hang the first caller.
+		// Same reasons as draft_mr_note: two TUIs open at once hang the first caller,
+		// and the user's confirmation belongs in the transcript.
 		executionMode: "sequential",
+		exposure: "model-only",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			if (!ctx.hasUI) return errResult("post_mr_review requires an interactive UI.");

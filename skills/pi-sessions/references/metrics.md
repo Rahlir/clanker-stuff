@@ -28,7 +28,7 @@ Every entry counts, including abandoned branches: that money was spent.
 | `assistant` | The main agent's own turns (`message.usage`). |
 | `usage:<kind>` | pi usage entries, such as `usage:cache_warm`. |
 | `compaction`, `branch_summary` | The LLM call that wrote the summary. |
-| `tool_result` | A tool's nested model calls reported as the result's top-level `usage` (code_review since clanker-stuff 6df6f15). |
+| `tool_result` | A tool's nested model calls reported as the result's top-level `usage` (code_review since clanker-stuff 6df6f15). A codemode result sums the spend of the models its script ran and of the tools it called, with no model named, so it counts under no model. |
 | `review_legacy` | code_review receipts from before that fix: `details.usage` on a finished job's result (`details.mode` `review` or `status`, not still running), only before 2026-10-20 15:21 UTC and before the session's first top-level-usage code_review result. The old extension returned the same receipt on every await or status call, so a receipt identical to one already counted for that job id (same model, tokens and cost) is skipped and counted as repeated in coverage. A new `started` receipt resets its job id, because ids restart at `cr-1` after a reload. After the fix date, such a receipt for a job never delivered with top-level usage comes from an extension loaded before the fix: its spend is not counted, and coverage warns how many there were. |
 
 - **Recorded vs corrected.** `cost_recorded` is what the log says.
@@ -91,6 +91,8 @@ re-injects memory, switches models or gets renamed does not.
 - **Skill invocations** (`/skill:name`) are parsed with pi's own skill-block
   parser. **Skills loaded** in `facts` counts the agent's reads of a
   `SKILL.md`, which is how most skills get used.
+- **Tool calls** in `facts` include the calls codemode scripts made, so a
+  script that ran five tools counts six calls.
 - **Ticket mentions:** keys of the configured Jira projects (the jira CLI's
   default project unless `build --jira-project` says otherwise) in what the
   user wrote, in tool-call arguments, and in session names, one row per entry
@@ -139,6 +141,8 @@ re-injects memory, switches models or gets renamed does not.
 
 - code_review reviewer transcripts: reviewers run with `--no-session`; only
   their spend is visible.
+- Results of calls codemode scripts made: pi records each call's name,
+  arguments, status, duration and error text, not its output.
 - Background reviews never collected and killed at session shutdown: their
   spend is lost.
 - Sessions in a custom session directory (`--session-dir`,

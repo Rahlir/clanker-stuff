@@ -91,6 +91,7 @@ export async function build({ since, until, openEnded = true, includeSelf = fals
     malformed_lines: 0,
     missing_final_newline: 0,
     orphan_tool_results: 0,
+    nested_calls_incomplete: 0,
     repeated_review_receipts: 0,
     late_review_receipts: 0,
     entries_without_time: 0,
@@ -145,6 +146,7 @@ export async function build({ since, until, openEnded = true, includeSelf = fals
       cov.malformed_lines += read.malformed;
       if (read.missingFinalNewline) cov.missing_final_newline++;
       cov.orphan_tool_results += rows.stats.orphanResults;
+      cov.nested_calls_incomplete += rows.stats.incompleteNested;
       cov.repeated_review_receipts += rows.stats.repeatedReceipts;
       cov.late_review_receipts += rows.stats.lateReceipts;
       cov.entries_inherited += rows.inherited.length;

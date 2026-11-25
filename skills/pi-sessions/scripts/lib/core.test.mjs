@@ -124,6 +124,36 @@ test("tool calls are joined with their results", () => {
   );
 });
 
+test("calls a codemode script made become rows under their caller", () => {
+  const { toolCalls, turns, tickets, stats } = extract("codemode");
+  assert.equal(turns[0].tool_calls, 1);
+  assert.deepEqual(
+    toolCalls.map((c) => [c.call_id, c.parent_call_id, c.name, c.key_arg, c.is_error, c.result_text, c.duration_ms]),
+    [
+      ["toolu_cm", null, "codemode", "for (const k of load('keys')) await tools.bash({ command: `jira issue view ${k}` });", 0, "Script completed\nWall time 4.2 seconds\nOutput:\n1 ticket", 4200],
+      ["toolu_cm/1", "toolu_cm", "bash", "jira issue view HSCTR-41", 0, null, 900],
+      ["toolu_cm/2", "toolu_cm", "bash", "rg -r foo", 1, "search-guard: rg -r replaces matches", 1],
+      ["toolu_cm/3", "toolu_cm", "helper", "scan", 0, null, 2000],
+      ["toolu_cm/3/1", "toolu_cm/3", "read", "/work/a.ts", 0, null, 5],
+      ["toolu_cm/4", "toolu_cm", "edit", null, 0, null, 12],
+      ["toolu_cm/5", "toolu_cm", "read", "/work/b.ts", null, null, null],
+    ],
+  );
+  const [, first, , , , omitted] = toolCalls;
+  // Nested results are not stored, so result columns point at the caller's result.
+  assert.deepEqual(
+    [first.entry_id, first.ts, first.result_entry_id, first.result_chars, first.on_active_branch],
+    ["c02", "2026-11-01T09:00:20.000Z", "c03", null, 1],
+  );
+  assert.equal(first.args_chars, JSON.stringify({ command: "jira issue view HSCTR-41" }).length);
+  assert.deepEqual([omitted.args_json, omitted.args_chars], [null, 9000]);
+  assert.deepEqual(
+    tickets.map((t) => [t.key, t.source, t.entry_id]),
+    [["HSCTR-41", "tool_args", "c02"]],
+  );
+  assert.equal(stats.incompleteNested, 1);
+});
+
 test("active time drops long gaps, splits user and agent time, and credits the hour a gap ends", () => {
   const { activeTime } = extract("basic");
   // User: opening the session and typing the first prompt (0.1 + 29.8 s),

@@ -435,6 +435,39 @@ function cap(text, limit) {
   return text.length > limit ? text.slice(0, limit) : text;
 }
 
+/**
+ * The corpus row for a call another tool made while it ran (a codemode script's
+ * `tools.bash()`, say), from the bounded record pi keeps as `nestedCalls` on the
+ * calling tool's result. pi never stores nested results: only an error's text
+ * survives, and the result columns point at the calling tool's result.
+ */
+function nestedCallRow(call, root) {
+  const args = call.arguments && typeof call.arguments === "object" ? call.arguments : null;
+  const argsJson = args ? JSON.stringify(args) : null;
+  const id = typeof call.id === "string" ? call.id : null;
+  // pi names a nested call `<caller id>/<n>`, so the caller is everything
+  // before the last slash, whatever the provider's own ids contain.
+  const parent = id?.startsWith(`${root.call_id}/`) ? id.slice(0, id.lastIndexOf("/")) : root.call_id;
+  return {
+    ref: root.ref,
+    call_id: id,
+    parent_call_id: parent,
+    entry_id: root.entry_id,
+    ts: root.ts,
+    name: call.name ?? null,
+    key_arg: keyArg(args),
+    args_json: argsJson == null ? null : cap(argsJson, ARGS_CAP),
+    args_chars: argsJson?.length ?? call.argumentsBytes ?? null,
+    result_entry_id: root.result_entry_id,
+    result_ts: root.result_ts,
+    is_error: call.status === "error" ? 1 : call.status === "ok" ? 0 : null,
+    result_text: call.status === "error" && typeof call.error === "string" ? call.error : null,
+    result_chars: null,
+    duration_ms: call.durationMs ?? null,
+    on_active_branch: root.on_active_branch,
+  };
+}
+
 function ticketMatcher(projects) {
   const keys = (projects ?? []).filter((p) => /^[A-Z][A-Z0-9_]*$/.test(p));
   return keys.length ? new RegExp(`\\b(?:${keys.join("|")})-\\d{1,7}\\b`, "g") : null;
@@ -474,6 +507,8 @@ export function extractSession(input, ctx = {}) {
       types: new Map(),
       unknown: new Map(),
       orphanResults: 0,
+      // Results whose nested-call record pi marked incomplete.
+      incompleteNested: 0,
       repeatedReceipts: 0,
       lateReceipts: 0,
       // No readable time: kept, but outside every window and the timeline.
@@ -673,9 +708,10 @@ export function extractSession(input, ctx = {}) {
           const rm = r?.message;
           const argsJson = JSON.stringify(b.arguments ?? {});
           const resultText = rm ? textOf(rm.content) : null;
-          out.toolCalls.push({
+          const row = {
             ref,
             call_id: b.id ?? null,
+            parent_call_id: null,
             entry_id: e.id,
             ts,
             name: b.name ?? null,
@@ -689,8 +725,16 @@ export function extractSession(input, ctx = {}) {
             result_chars: resultText?.length ?? null,
             duration_ms: rm?.durationMs ?? null,
             on_active_branch: onActive(e),
-          });
+          };
+          out.toolCalls.push(row);
           scanTickets(argsJson, "tool_args", e);
+          const nested = rm?.nestedCalls;
+          if (nested?.complete === false) out.stats.incompleteNested++;
+          for (const call of Array.isArray(nested?.calls) ? nested.calls : []) {
+            const nestedRow = nestedCallRow(call, row);
+            out.toolCalls.push(nestedRow);
+            scanTickets(nestedRow.args_json, "tool_args", e);
+          }
         }
         if (text) out.fts.push({ text, ref, entry_id: e.id, kind: "assistant", ts });
         if (ms != null) lastAssistantMs = ms;

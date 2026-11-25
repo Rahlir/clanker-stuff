@@ -84,6 +84,9 @@ export default function questionnaire(pi: ExtensionAPI) {
 		// Serialize the whole tool batch: ctx.ui.custom has no mutual exclusion, so a
 		// second concurrent component steals focus and hangs the first call forever.
 		executionMode: "sequential",
+		// Not callable from codemode scripts: a script would receive the user's
+		// answers instead of the transcript, and its wait would count as agent time.
+		exposure: "model-only",
 		parameters: QuestionnaireParams,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
