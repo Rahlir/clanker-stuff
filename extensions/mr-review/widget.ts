@@ -33,48 +33,48 @@ const FULLSCREEN_ROWS_DIVISOR = 3;
 const PREFIX_COLS = 1 + 4 + 1 + 11 + 1 + 12 + 1;
 
 function issueRowBudget(tui: ViewportTarget): number {
-	const rows = tui.terminal.rows;
-	const cap = isFullscreen(tui)
-		? Math.min(rows - VIEWPORT_RESERVE, Math.floor(rows / FULLSCREEN_ROWS_DIVISOR))
-		: rows - VIEWPORT_RESERVE;
-	return Math.max(MIN_ISSUE_ROWS, cap);
+  const rows = tui.terminal.rows;
+  const cap = isFullscreen(tui)
+    ? Math.min(rows - VIEWPORT_RESERVE, Math.floor(rows / FULLSCREEN_ROWS_DIVISOR))
+    : rows - VIEWPORT_RESERVE;
+  return Math.max(MIN_ISSUE_ROWS, cap);
 }
 
 function issueLine(issue: Issue, theme: Theme, width: number): string {
-	const id = theme.fg("muted", `#${issue.id}`.padEnd(4));
-	const sev = theme.fg(severityColor(issue.severity), `[${issue.severity}]`.padEnd(11));
-	const s = stateView(issue);
-	const state = theme.fg(s.color, `${s.icon} ${s.label}`.padEnd(12));
-	const summaryText = issue.summary.replace(/\s+/g, " ").trim();
-	const summary = truncateToWidth(summaryText, Math.max(4, width - PREFIX_COLS), "\u2026");
-	return ` ${id} ${sev} ${state} ${theme.fg("text", summary)}`;
+  const id = theme.fg("muted", `#${issue.id}`.padEnd(4));
+  const sev = theme.fg(severityColor(issue.severity), `[${issue.severity}]`.padEnd(11));
+  const s = stateView(issue);
+  const state = theme.fg(s.color, `${s.icon} ${s.label}`.padEnd(12));
+  const summaryText = issue.summary.replace(/\s+/g, " ").trim();
+  const summary = truncateToWidth(summaryText, Math.max(4, width - PREFIX_COLS), "\u2026");
+  return ` ${id} ${sev} ${state} ${theme.fg("text", summary)}`;
 }
 
 function renderLines(store: ReviewStore, theme: Theme, width: number, maxRows: number): string[] {
-	const c = store.counts();
-	const head =
-		`${theme.fg("accent", theme.bold(`MR #${store.activeMr}`))} ` +
-		theme.fg(
-			"muted",
-			`\u00b7 ${c.total} issue${c.total === 1 ? "" : "s"} \u00b7 ${c.open} open \u00b7 ${c.commented} commented \u00b7 ${c.rejected} rejected \u00b7 ${c.posted} posted`,
-		);
-	const lines = [truncateToWidth(head, width)];
+  const c = store.counts();
+  const head =
+    `${theme.fg("accent", theme.bold(`MR #${store.activeMr}`))} ` +
+    theme.fg(
+      "muted",
+      `\u00b7 ${c.total} issue${c.total === 1 ? "" : "s"} \u00b7 ${c.open} open \u00b7 ${c.commented} commented \u00b7 ${c.rejected} rejected \u00b7 ${c.posted} posted`,
+    );
+  const lines = [truncateToWidth(head, width)];
 
-	const issues = store.list();
-	if (issues.length <= maxRows) {
-		for (const issue of issues) lines.push(issueLine(issue, theme, width));
-	} else {
-		const shown = maxRows - 1; // reserve a row for the overflow notice
-		for (let i = 0; i < shown; i++) lines.push(issueLine(issues[i], theme, width));
-		lines.push(theme.fg("muted", ` \u2026 +${issues.length - shown} more \u00b7 /mr-issues to view all`));
-	}
-	return lines;
+  const issues = store.list();
+  if (issues.length <= maxRows) {
+    for (const issue of issues) lines.push(issueLine(issue, theme, width));
+  } else {
+    const shown = maxRows - 1; // reserve a row for the overflow notice
+    for (let i = 0; i < shown; i++) lines.push(issueLine(issues[i], theme, width));
+    lines.push(theme.fg("muted", ` \u2026 +${issues.length - shown} more \u00b7 /mr-issues to view all`));
+  }
+  return lines;
 }
 
 /** Factory for ctx.ui.setWidget's component form; reads the store live on render. */
 export function issueWidgetFactory(store: ReviewStore) {
-	return (tui: TUI, theme: Theme): Component => ({
-		render: (width: number) => renderLines(store, theme, width, issueRowBudget(tui)),
-		invalidate: () => {},
-	});
+  return (tui: TUI, theme: Theme): Component => ({
+    render: (width: number) => renderLines(store, theme, width, issueRowBudget(tui)),
+    invalidate: () => {},
+  });
 }

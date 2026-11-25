@@ -33,14 +33,14 @@ export type PostErrorKind = "anchor-line" | "anchor-file" | "other";
 export type AnchorErrorKind = Exclude<PostErrorKind, "other">;
 
 export interface PostResult {
-	ok: boolean;
-	error?: string;
-	/** Set whenever `ok` is false. */
-	kind?: PostErrorKind;
+  ok: boolean;
+  error?: string;
+  /** Set whenever `ok` is false. */
+  kind?: PostErrorKind;
 }
 
 export function isAnchorFailure(kind?: PostErrorKind): kind is AnchorErrorKind {
-	return kind === "anchor-line" || kind === "anchor-file";
+  return kind === "anchor-line" || kind === "anchor-file";
 }
 
 // glab resolves --file/--line against the latest diff version itself and rejects
@@ -53,21 +53,21 @@ export function isAnchorFailure(kind?: PostErrorKind): kind is AnchorErrorKind {
 const FILE_ERROR_PATTERN = /not found in MR diff/i;
 
 const ANCHOR_ERROR_PATTERNS = [
-	/not found in diff/i, // glab: "line 88 not found in diff for src/a.ts"
-	/invalid line (range|number)/i,
-	/line number must be positive/i,
-	// GitLab 400s on an unresolvable position. Deliberately broad, because the
-	// wording varies ("must be a valid line code", "Line code is missing",
-	// a raw `line_code` key in the error payload) and the costs are asymmetric:
-	// a false positive sends the agent to re-anchor one note, a false negative
-	// puts it back in the retry loop this classifier exists to break.
-	/line[_ ]code/i,
-	/position is (incomplete|invalid)/i,
+  /not found in diff/i, // glab: "line 88 not found in diff for src/a.ts"
+  /invalid line (range|number)/i,
+  /line number must be positive/i,
+  // GitLab 400s on an unresolvable position. Deliberately broad, because the
+  // wording varies ("must be a valid line code", "Line code is missing",
+  // a raw `line_code` key in the error payload) and the costs are asymmetric:
+  // a false positive sends the agent to re-anchor one note, a false negative
+  // puts it back in the retry loop this classifier exists to break.
+  /line[_ ]code/i,
+  /position is (incomplete|invalid)/i,
 ];
 
 export function classifyPostError(detail: string): PostErrorKind {
-	if (FILE_ERROR_PATTERN.test(detail)) return "anchor-file";
-	return ANCHOR_ERROR_PATTERNS.some((p) => p.test(detail)) ? "anchor-line" : "other";
+  if (FILE_ERROR_PATTERN.test(detail)) return "anchor-file";
+  return ANCHOR_ERROR_PATTERNS.some((p) => p.test(detail)) ? "anchor-line" : "other";
 }
 
 /**
@@ -81,42 +81,42 @@ export function classifyPostError(detail: string): PostErrorKind {
  * general ones with the path in the body.
  */
 export function buildNoteArgs(mr: string, issue: Issue, body: string): string[] {
-	const isInline = isInlineAnchor(issue);
-	const args = ["mr", "note", "create", mr];
-	if (isInline) {
-		// Multi-line issues use glab's START:END range syntax; single-line issues
-		// just pass the one line.
-		const line =
-			issue.endLine && issue.endLine !== issue.startLine
-				? `${issue.startLine}:${issue.endLine}`
-				: String(issue.startLine);
-		args.push("--file", issue.file as string, "--line", line);
-	}
-	args.push("-m", body);
-	// --unique is incompatible with --file; only safe for general notes.
-	if (!isInline) args.push("--unique");
-	return args;
+  const isInline = isInlineAnchor(issue);
+  const args = ["mr", "note", "create", mr];
+  if (isInline) {
+    // Multi-line issues use glab's START:END range syntax; single-line issues
+    // just pass the one line.
+    const line =
+      issue.endLine && issue.endLine !== issue.startLine
+        ? `${issue.startLine}:${issue.endLine}`
+        : String(issue.startLine);
+    args.push("--file", issue.file as string, "--line", line);
+  }
+  args.push("-m", body);
+  // --unique is incompatible with --file; only safe for general notes.
+  if (!isInline) args.push("--unique");
+  return args;
 }
 
 export async function postNote(mr: string, issue: Issue, cwd: string): Promise<PostResult> {
-	// Emptiness is judged on the approved note, before composeBody can pad it with
-	// a position prefix.
-	if (!(issue.note ?? "").trim()) {
-		return { ok: false, error: "empty note body", kind: "other" };
-	}
+  // Emptiness is judged on the approved note, before composeBody can pad it with
+  // a position prefix.
+  if (!(issue.note ?? "").trim()) {
+    return { ok: false, error: "empty note body", kind: "other" };
+  }
 
-	const args = buildNoteArgs(mr, issue, composeBody(issue));
+  const args = buildNoteArgs(mr, issue, composeBody(issue));
 
-	try {
-		await run("glab", args, { cwd, timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
-		return { ok: true };
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		// glab writes the useful part to stderr; surface the first meaningful line.
-		const stderr = (err as { stderr?: string }).stderr;
-		const detail = (stderr && stderr.trim().split("\n").find((l) => l.trim())) || message.split("\n")[0];
-		// Classify against the whole stderr, not just the surfaced line: glab prints
-		// the API body on a later line for server-side rejections.
-		return { ok: false, error: detail, kind: classifyPostError(`${stderr ?? ""}\n${message}`) };
-	}
+  try {
+    await run("glab", args, { cwd, timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // glab writes the useful part to stderr; surface the first meaningful line.
+    const stderr = (err as { stderr?: string }).stderr;
+    const detail = (stderr && stderr.trim().split("\n").find((l) => l.trim())) || message.split("\n")[0];
+    // Classify against the whole stderr, not just the surfaced line: glab prints
+    // the API body on a later line for server-side rejections.
+    return { ok: false, error: detail, kind: classifyPostError(`${stderr ?? ""}\n${message}`) };
+  }
 }

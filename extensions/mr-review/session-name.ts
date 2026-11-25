@@ -16,8 +16,8 @@ const OWN_NAME = /^mr-\d+-review$/;
  * gives a stable, readable name, so everything else leaves the session unnamed.
  */
 export function reviewSessionName(mr: string): string | undefined {
-	const n = mr.trim().replace(/^[!#]/, "");
-	return /^\d+$/.test(n) ? `mr-${n}-review` : undefined;
+  const n = mr.trim().replace(/^[!#]/, "");
+  return /^\d+$/.test(n) ? `mr-${n}-review` : undefined;
 }
 
 /**
@@ -27,8 +27,8 @@ export function reviewSessionName(mr: string): string | undefined {
  * user picked (`/name`, session picker) is never clobbered.
  */
 export function nextSessionName(current: string | undefined, mr: string): string | undefined {
-	const wanted = reviewSessionName(mr);
-	if (!wanted || wanted === current) return undefined;
-	if (current && !OWN_NAME.test(current)) return undefined;
-	return wanted;
+  const wanted = reviewSessionName(mr);
+  if (!wanted || wanted === current) return undefined;
+  if (current && !OWN_NAME.test(current)) return undefined;
+  return wanted;
 }

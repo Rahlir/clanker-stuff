@@ -6,7 +6,7 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-[*.ts]
+[*.{js,mjs,ts}]
 indent_style = space
 indent_size = 2
 
@@ -17,3 +17,7 @@ indent_size = 2
 # Trailing spaces are significant in Markdown (forced line breaks)
 [*.md]
 trim_trailing_whitespace = false
+
+# Fixture deliberately lacks a final newline (core.test.mjs)
+[skills/pi-sessions/scripts/fixtures/misc.jsonl]
+insert_final_newline = false

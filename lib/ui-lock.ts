@@ -20,17 +20,17 @@
 const LOCK_KEY = Symbol.for("clanker-stuff.ui-lock");
 
 interface LockState {
-	/** Label of the UI currently on screen, or null when nothing is open. */
-	owner: string | null;
+  /** Label of the UI currently on screen, or null when nothing is open. */
+  owner: string | null;
 }
 
 function lockState(): LockState {
-	const g = globalThis as unknown as Record<symbol, LockState | undefined>;
-	const existing = g[LOCK_KEY];
-	if (existing) return existing;
-	const created: LockState = { owner: null };
-	g[LOCK_KEY] = created;
-	return created;
+  const g = globalThis as unknown as Record<symbol, LockState | undefined>;
+  const existing = g[LOCK_KEY];
+  if (existing) return existing;
+  const created: LockState = { owner: null };
+  g[LOCK_KEY] = created;
+  return created;
 }
 
 /**
@@ -44,22 +44,22 @@ function lockState(): LockState {
  * (a UI tool missing `executionMode: "sequential"`) that should surface.
  */
 export async function withUiLock<T>(owner: string, open: () => Promise<T>): Promise<T> {
-	const state = lockState();
-	if (state.owner !== null) {
-		throw new Error(
-			`Cannot open "${owner}": the interactive UI is already showing "${state.owner}". ` +
-				`Only one can be open at a time; a tool that opens UI must declare executionMode: "sequential".`,
-		);
-	}
-	state.owner = owner;
-	try {
-		return await open();
-	} finally {
-		state.owner = null;
-	}
+  const state = lockState();
+  if (state.owner !== null) {
+    throw new Error(
+      `Cannot open "${owner}": the interactive UI is already showing "${state.owner}". ` +
+        `Only one can be open at a time; a tool that opens UI must declare executionMode: "sequential".`,
+    );
+  }
+  state.owner = owner;
+  try {
+    return await open();
+  } finally {
+    state.owner = null;
+  }
 }
 
 /** Label of the UI currently holding the lock, or null. Exposed for tests. */
 export function currentUiLockOwner(): string | null {
-	return lockState().owner;
+  return lockState().owner;
 }
